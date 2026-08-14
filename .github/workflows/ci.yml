@@ -10,16 +10,30 @@ permissions:
   contents: read
   packages: write
 
+# Repository/organization Variables (Settings > Secrets and variables >
+# Actions > Variables) override the `vars.X || default` fallbacks below
+# without touching this file. Action version pins (@v4, @v0.36.0, ...) are
+# NOT made overridable this way on purpose: letting a variable silently
+# swap which action code runs would defeat the point of pinning a
+# supply-chain dependency.
+env:
+  CI_SOURCE: xcodebuild
+  XCTRIAGE_BIN: .build/release/xctriage
+  BUILD_LOG: build.log
+  TEST_LOG: test.log
+  REMEDIATION_JSON: remediation_triage.json
+  TRIVY_RESULTS_SARIF: trivy-results.sarif
+
 jobs:
   dependency-review:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
 
   trivy:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
       security-events: write
@@ -31,23 +45,23 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
-          scanners: vuln,secret,misconfig
-          skip-dirs: .build
+          scanners: ${{ vars.TRIVY_SCANNERS || 'vuln,secret,misconfig' }}
+          skip-dirs: ${{ vars.TRIVY_SKIP_DIRS || '.build' }}
           format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
+          output: ${{ env.TRIVY_RESULTS_SARIF }}
+          severity: ${{ vars.TRIVY_SEVERITY || 'CRITICAL,HIGH' }}
 
       - name: Upload Trivy results to Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: trivy-results.sarif
+          sarif_file: ${{ env.TRIVY_RESULTS_SARIF }}
 
   test:
-    runs-on: macos-15
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-15' }}
     strategy:
       matrix:
-        xcode: ["16.3"]
+        xcode: ${{ fromJSON(vars.XCODE_VERSIONS || '["16.3"]') }}
     env:
       # Same policy as the Jenkins pipeline's Auto-Remediate stage: the LLM
       # only picks the failure category, never the remediation action. Only
@@ -55,7 +69,7 @@ jobs:
       # retry. Secrets are optional here on purpose: a fork without them
       # configured just skips the LLM step and fails normally on a real
       # test failure, instead of the workflow erroring out.
-      FLAKY_CONFIDENCE_THRESHOLD: '0.75'
+      FLAKY_CONFIDENCE_THRESHOLD: ${{ vars.FLAKY_CONFIDENCE_THRESHOLD || '0.75' }}
       XCTRIAGE_ANTHROPIC_API_KEY: ${{ secrets.XCTRIAGE_ANTHROPIC_API_KEY }}
       XCTRIAGE_SLACK_WEBHOOK: ${{ secrets.XCTRIAGE_SLACK_WEBHOOK }}
 
@@ -78,13 +92,13 @@ jobs:
 
       - name: Build
         id: build
-        run: swift build -c release 2>&1 | tee build.log
+        run: swift build -c release 2>&1 | tee "$BUILD_LOG"
 
       - name: "Self-triage: build failure"
         if: failure() && steps.build.outcome == 'failure'
         run: |
-          .build/release/xctriage analyze build.log \
-            --source xcodebuild \
+          "$XCTRIAGE_BIN" analyze "$BUILD_LOG" \
+            --source "$CI_SOURCE" \
             --build-id "${{ github.run_id }}" \
             --llm \
             --output slack || true
@@ -92,19 +106,19 @@ jobs:
       - name: Test
         id: test
         continue-on-error: true
-        run: swift test 2>&1 | tee test.log
+        run: swift test 2>&1 | tee "$TEST_LOG"
 
       - name: "Auto-Remediate: classify failure"
         id: classify
         if: steps.test.outcome == 'failure'
         run: |
-          .build/release/xctriage analyze test.log \
-            --source xcodebuild \
+          "$XCTRIAGE_BIN" analyze "$TEST_LOG" \
+            --source "$CI_SOURCE" \
             --build-id "${{ github.run_id }}" \
             --llm \
-            --output json > remediation_triage.json || true
-          category=$(python3 -c "import json; print(json.load(open('remediation_triage.json'))['classification']['category'])" 2>/dev/null || echo unknown)
-          confidence=$(python3 -c "import json; print(json.load(open('remediation_triage.json'))['classification']['confidence'])" 2>/dev/null || echo 0)
+            --output json > "$REMEDIATION_JSON" || true
+          category=$(python3 -c "import json,os; print(json.load(open(os.environ['REMEDIATION_JSON']))['classification']['category'])" 2>/dev/null || echo unknown)
+          confidence=$(python3 -c "import json,os; print(json.load(open(os.environ['REMEDIATION_JSON']))['classification']['confidence'])" 2>/dev/null || echo 0)
           echo "category=$category" >> "$GITHUB_OUTPUT"
           echo "confidence=$confidence" >> "$GITHUB_OUTPUT"
           echo "LLM classification: $category (confidence $confidence, threshold $FLAKY_CONFIDENCE_THRESHOLD)"
@@ -115,13 +129,13 @@ jobs:
           steps.test.outcome == 'failure' &&
           steps.classify.outputs.category == 'flaky_test' &&
           fromJSON(steps.classify.outputs.confidence) >= fromJSON(env.FLAKY_CONFIDENCE_THRESHOLD)
-        run: swift test 2>&1 | tee test.log
+        run: swift test 2>&1 | tee "$TEST_LOG"
 
       - name: "Auto-Remediate: notify (no safe auto-fix)"
         if: steps.test.outcome == 'failure' && steps.retry.outcome != 'success'
         run: |
-          .build/release/xctriage analyze test.log \
-            --source xcodebuild \
+          "$XCTRIAGE_BIN" analyze "$TEST_LOG" \
+            --source "$CI_SOURCE" \
             --build-id "${{ github.run_id }}" \
             --llm \
             --output slack || true
@@ -132,15 +146,15 @@ jobs:
 
       - name: "Self-triage: analyze build output"
         run: |
-          .build/release/xctriage analyze build.log \
-            --source xcodebuild \
+          "$XCTRIAGE_BIN" analyze "$BUILD_LOG" \
+            --source "$CI_SOURCE" \
             --build-id "${{ github.run_id }}" \
             --output json | python3 -m json.tool
 
       - name: "Self-triage: analyze test output"
         run: |
-          .build/release/xctriage analyze test.log \
-            --source xcodebuild \
+          "$XCTRIAGE_BIN" analyze "$TEST_LOG" \
+            --source "$CI_SOURCE" \
             --build-id "${{ github.run_id }}" \
             --output json | python3 -m json.tool
 
@@ -150,6 +164,6 @@ jobs:
         with:
           name: triage-reports-${{ matrix.xcode }}
           path: |
-            build.log
-            test.log
-            remediation_triage.json
+            ${{ env.BUILD_LOG }}
+            ${{ env.TEST_LOG }}
+            ${{ env.REMEDIATION_JSON }}

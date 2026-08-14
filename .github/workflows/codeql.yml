@@ -14,12 +14,12 @@ permissions:
 
 jobs:
   analyze:
-    runs-on: macos-15
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-15' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: sudo xcode-select --switch /Applications/Xcode_16.3.app
+        run: sudo xcode-select --switch /Applications/Xcode_${{ vars.XCODE_VERSION || '16.3' }}.app
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
