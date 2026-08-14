@@ -166,28 +166,43 @@ Rather than a feature checklist, here is how each concept appears in the actual 
 
 ---
 
-## Jenkinsfile
+## CI/CD Pipelines
 
-The included `Jenkinsfile` runs xctriage on its own build output: self-triaging CI pipeline:
+The included `Jenkinsfile` and `.github/workflows/ci.yml` both run xctriage on their own build output: a self-triaging pipeline that classifies its own failures instead of leaving that to whoever's on call.
+
+Both pipelines run the same checks in the same order: resolve, lint (SwiftLint), SAST (Semgrep in Jenkins, CodeQL in GitHub Actions since CodeQL isn't practical to self-host without a GHAS license), dependency/secret/misconfig scan (Trivy), build, test, auto-remediate, then archive a release binary on a tag.
+
+### Auto-Remediation
+
+Both pipelines classify test failures with Claude before deciding what to do about them, and both apply the same rule: **the LLM only picks the failure category, it never picks the action.**
+
+- A `flaky_test` verdict at 0.75+ confidence gets one automatic retry. If the retry passes, the build goes green and nobody gets paged for a flake.
+- Every other category (compilation error, dependency failure, OOM, timeout, infra failure) has no safe auto-fix, so the pipeline posts the LLM's suggested fix to Slack and leaves the build failed for a human.
+- The retry only ever happens once. There's no loop, no escalating retry count, and nothing outside `flaky_test` is eligible.
+
+**Jenkinsfile** (`stage('Auto-Remediate (LLM)')`):
 
 ```groovy
-stage('Build') {
-    steps {
-        sh 'swift build -c release 2>&1 | tee build.log'
-    }
-    post {
-        failure {
-            sh '''
-                .build/release/xctriage analyze build.log \\
-                    --source xcodebuild \\
-                    --build-id "${BUILD_TAG}" \\
-                    --llm \\
-                    --output slack
-            '''
-        }
-    }
+if (category == 'flaky_test' && confidence >= threshold) {
+    sh 'swift test --enable-code-coverage 2>&1 | tee "${TEST_LOG}"'
+    currentBuild.result = 'SUCCESS'
+} else {
+    sh '"${XCTRIAGE_BIN}" analyze "${TEST_LOG}" --source "${CI_SOURCE}" --llm --output slack'
 }
 ```
+
+**GitHub Actions** (`.github/workflows/ci.yml`):
+
+```yaml
+- name: "Auto-Remediate: retry flaky test"
+  if: >
+    steps.test.outcome == 'failure' &&
+    steps.classify.outputs.category == 'flaky_test' &&
+    fromJSON(steps.classify.outputs.confidence) >= fromJSON(env.FLAKY_CONFIDENCE_THRESHOLD)
+  run: swift test 2>&1 | tee test.log
+```
+
+Nothing above is an inline literal buried in a step: the confidence threshold, log paths, xctriage binary path, and Trivy severity are all named pipeline variables (Jenkins build parameters and `environment {}` entries; GitHub Actions job-level `env:`), and the agent label / credential IDs are controller-level overrides (`env.XCTRIAGE_AGENT_LABEL`, `env.XCTRIAGE_ANTHROPIC_CREDENTIAL_ID`, `env.XCTRIAGE_SLACK_CREDENTIAL_ID`) rather than build parameters, since those pick *where* and *as whom* the pipeline runs and shouldn't be settable by whoever triggers a build.
 
 ---
 

@@ -48,6 +48,16 @@ jobs:
     strategy:
       matrix:
         xcode: ["16.3"]
+    env:
+      # Same policy as the Jenkins pipeline's Auto-Remediate stage: the LLM
+      # only picks the failure category, never the remediation action. Only
+      # a flaky_test verdict at this confidence or higher gets one automatic
+      # retry. Secrets are optional here on purpose: a fork without them
+      # configured just skips the LLM step and fails normally on a real
+      # test failure, instead of the workflow erroring out.
+      FLAKY_CONFIDENCE_THRESHOLD: '0.75'
+      XCTRIAGE_ANTHROPIC_API_KEY: ${{ secrets.XCTRIAGE_ANTHROPIC_API_KEY }}
+      XCTRIAGE_SLACK_WEBHOOK: ${{ secrets.XCTRIAGE_SLACK_WEBHOOK }}
 
     steps:
       - uses: actions/checkout@v4
@@ -67,10 +77,58 @@ jobs:
           swiftlint lint --quiet
 
       - name: Build
+        id: build
         run: swift build -c release 2>&1 | tee build.log
 
+      - name: "Self-triage: build failure"
+        if: failure() && steps.build.outcome == 'failure'
+        run: |
+          .build/release/xctriage analyze build.log \
+            --source xcodebuild \
+            --build-id "${{ github.run_id }}" \
+            --llm \
+            --output slack || true
+
       - name: Test
+        id: test
+        continue-on-error: true
         run: swift test 2>&1 | tee test.log
+
+      - name: "Auto-Remediate: classify failure"
+        id: classify
+        if: steps.test.outcome == 'failure'
+        run: |
+          .build/release/xctriage analyze test.log \
+            --source xcodebuild \
+            --build-id "${{ github.run_id }}" \
+            --llm \
+            --output json > remediation_triage.json || true
+          category=$(python3 -c "import json; print(json.load(open('remediation_triage.json'))['classification']['category'])" 2>/dev/null || echo unknown)
+          confidence=$(python3 -c "import json; print(json.load(open('remediation_triage.json'))['classification']['confidence'])" 2>/dev/null || echo 0)
+          echo "category=$category" >> "$GITHUB_OUTPUT"
+          echo "confidence=$confidence" >> "$GITHUB_OUTPUT"
+          echo "LLM classification: $category (confidence $confidence, threshold $FLAKY_CONFIDENCE_THRESHOLD)"
+
+      - name: "Auto-Remediate: retry flaky test"
+        id: retry
+        if: >
+          steps.test.outcome == 'failure' &&
+          steps.classify.outputs.category == 'flaky_test' &&
+          fromJSON(steps.classify.outputs.confidence) >= fromJSON(env.FLAKY_CONFIDENCE_THRESHOLD)
+        run: swift test 2>&1 | tee test.log
+
+      - name: "Auto-Remediate: notify (no safe auto-fix)"
+        if: steps.test.outcome == 'failure' && steps.retry.outcome != 'success'
+        run: |
+          .build/release/xctriage analyze test.log \
+            --source xcodebuild \
+            --build-id "${{ github.run_id }}" \
+            --llm \
+            --output slack || true
+
+      - name: Fail job if the test failure was not auto-remediated
+        if: steps.test.outcome == 'failure' && steps.retry.outcome != 'success'
+        run: exit 1
 
       - name: "Self-triage: analyze build output"
         run: |
@@ -94,3 +152,4 @@ jobs:
           path: |
             build.log
             test.log
+            remediation_triage.json
