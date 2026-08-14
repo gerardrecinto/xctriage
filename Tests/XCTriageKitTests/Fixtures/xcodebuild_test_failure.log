@@ -1,0 +1,12 @@
+Test Suite 'CoreMediaPipelineTests' started at 2024-05-28 03:30:00.000
+Test Case '-[CoreMediaPipelineTests testAudioDecoderBitIdentical]' started.
+/Users/runner/work/CoreMediaCI/Tests/AudioDecoderTests.swift:78: error: -[CoreMediaPipelineTests testAudioDecoderBitIdentical] : XCTAssertEqual failed: ("1024") is not equal to ("2048") - expected sampleCount 2048
+Test Case '-[CoreMediaPipelineTests testAudioDecoderBitIdentical]' failed (2.341 seconds).
+Test Case '-[CoreMediaPipelineTests testVideoFrameTimestampAccuracy]' started.
+Test Case '-[CoreMediaPipelineTests testVideoFrameTimestampAccuracy]' passed (0.012 seconds).
+Test Case '-[CoreMediaPipelineTests testHLSSegmentDecoding]' started.
+Test Case '-[CoreMediaPipelineTests testHLSSegmentDecoding]' failed (0.891 seconds).
+Test Suite 'CoreMediaPipelineTests' finished at 2024-05-28 03:30:03.244.
+     Executed 3 tests, with 2 failures (0 unexpected) in 3.244 seconds.
+
+** TEST FAILED **

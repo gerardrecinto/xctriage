@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+
+  trivy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan (deps + misconfig)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          skip-dirs: .build
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy results to Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  test:
+    runs-on: macos-15
+    strategy:
+      matrix:
+        xcode: ["16.3"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_${{ matrix.xcode }}.app
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Lint
+        run: |
+          brew install swiftlint
+          swiftlint lint --quiet
+
+      - name: Build
+        run: swift build -c release 2>&1 | tee build.log
+
+      - name: Test
+        run: swift test 2>&1 | tee test.log
+
+      - name: "Self-triage: analyze build output"
+        run: |
+          .build/release/xctriage analyze build.log \
+            --source xcodebuild \
+            --build-id "${{ github.run_id }}" \
+            --output json | python3 -m json.tool
+
+      - name: "Self-triage: analyze test output"
+        run: |
+          .build/release/xctriage analyze test.log \
+            --source xcodebuild \
+            --build-id "${{ github.run_id }}" \
+            --output json | python3 -m json.tool
+
+      - name: Upload triage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triage-reports-${{ matrix.xcode }}
+          path: |
+            build.log
+            test.log

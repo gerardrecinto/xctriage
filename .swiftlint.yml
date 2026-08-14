@@ -1,0 +1,28 @@
+excluded:
+  - .build
+  - Tests/XCTriageKitTests/Fixtures
+
+# Terse identifiers (n, db, s, c, i), aligned colons/trailing commas, and
+# force_try on compile-time-constant NSRegularExpression patterns are an
+# intentional style in this codebase, not a lint gap.
+disabled_rules:
+  - identifier_name
+  - colon
+  - trailing_comma
+  - todo
+  - force_try
+  - large_tuple
+
+# force_unwrapping catches crash-on-malformed-input bugs on untrusted
+# xcodebuild/xcresult/Claude-API input, which is the actual risk in this
+# codebase, so opt it in explicitly (it's off by default in SwiftLint).
+opt_in_rules:
+  - force_unwrapping
+
+line_length:
+  warning: 170
+  error: 230
+
+function_body_length:
+  warning: 80
+  error: 120

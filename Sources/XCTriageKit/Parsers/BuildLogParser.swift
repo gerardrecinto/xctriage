@@ -1,0 +1,128 @@
+import Foundation
+
+// Parses xcodebuild console output (not xcresult: use XCResultParser for bundles)
+public struct BuildLogParser: Sendable {
+
+    // Swift/ObjC compiler errors: /path/File.swift:42:17: error: message
+    // Using NSRegularExpression for multiline + case-insensitive support
+    private static let swiftErrorRE = try! NSRegularExpression(
+        pattern: #"^(.+\.(?:swift|m|mm|c|cpp|h)):(\d+):(\d+):\s+(error|warning|note):\s+(.+)$"#)
+
+    private static let testPassRE = try! NSRegularExpression(
+        pattern: #"Test Case '(.+?)' passed \([0-9.]+ seconds\)"#)
+
+    private static let testFailRE = try! NSRegularExpression(
+        pattern: #"Test Case '(.+?)' failed \(([0-9.]+) seconds\)"#)
+
+    private static let buildResultRE = try! NSRegularExpression(
+        pattern: #"\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*"#)
+
+    private static let linkerErrorRE = try! NSRegularExpression(
+        pattern: #"^ld: (.+)"#)
+
+    private static let genericErrorRE = try! NSRegularExpression(
+        pattern: #"(?i)^error:\s+(.+)"#)
+
+    public init() {}
+
+    public func parse(_ logText: String) -> [LogEntry] {
+        var entries: [LogEntry] = []
+        let lines = logText.components(separatedBy: "\n")
+        for (i, raw) in lines.enumerated() {
+            let level = detectLevel(raw)
+            let message = raw.trimmingCharacters(in: .whitespaces)
+            entries.append(LogEntry(lineNumber: i + 1, level: level, message: message, raw: raw))
+        }
+        return entries
+    }
+
+    private func detectLevel(_ line: String) -> LogLevel? {
+        let range = NSRange(line.startIndex..., in: line)
+        if let m = Self.swiftErrorRE.firstMatch(in: line, range: range) {
+            let severityRange = Range(m.range(at: 4), in: line)
+            let severity = severityRange.map { String(line[$0]) } ?? ""
+            switch severity {
+            case "error":   return .error
+            case "warning": return .warning
+            case "note":    return .note
+            default:        break
+            }
+        }
+        if let m = Self.buildResultRE.firstMatch(in: line, range: range) {
+            let resultRange = Range(m.range(at: 2), in: line)
+            let result = resultRange.map { String(line[$0]) } ?? ""
+            return result == "FAILED" ? .error : .info
+        }
+        if Self.linkerErrorRE.firstMatch(in: line, range: range) != nil { return .error }
+        if Self.genericErrorRE.firstMatch(in: line, range: range) != nil { return .error }
+        if Self.testFailRE.firstMatch(in: line, range: range) != nil { return .error }
+        return nil
+    }
+
+    public func extractFailureContext(_ entries: [LogEntry]) -> [LogEntry] {
+        let failIdx = entries.firstIndex { entry in
+            let r = NSRange(entry.message.startIndex..., in: entry.message)
+            guard let m = Self.buildResultRE.firstMatch(in: entry.message, range: r) else { return false }
+            let resultRange = Range(m.range(at: 2), in: entry.message)
+            return resultRange.map { entry.message[$0] == "FAILED" } ?? false
+        }
+        guard let idx = failIdx else {
+            return entries.filter { $0.level == .error }
+        }
+        return entries[..<idx].filter { $0.level == .error || $0.level == .warning }
+    }
+
+    public func extractFailureSites(_ entries: [LogEntry]) -> [FailureSite] {
+        var sites: [FailureSite] = []
+        var seen: Set<String> = []
+
+        for entry in entries {
+            let raw = entry.raw
+            let rawRange = NSRange(raw.startIndex..., in: raw)
+            let msgRange = NSRange(entry.message.startIndex..., in: entry.message)
+
+            // Swift/ObjC compiler error
+            if let m = Self.swiftErrorRE.firstMatch(in: raw, range: rawRange) {
+                let sev = strAt(raw, m.range(at: 4))
+                guard sev == "error" else { continue }
+                let file = strAt(raw, m.range(at: 1))
+                let line = intAt(raw, m.range(at: 2))
+                let col  = intAt(raw, m.range(at: 3))
+                let msg  = strAt(raw, m.range(at: 5))
+                let key  = "\(file ?? ""):\(line ?? 0)"
+                if seen.insert(key).inserted {
+                    sites.append(FailureSite(file: file, line: line, column: col,
+                                             testName: nil, errorMessage: msg ?? ""))
+                }
+                continue
+            }
+            // XCTest failure
+            if let m = Self.testFailRE.firstMatch(in: entry.message, range: msgRange) {
+                let name = strAt(entry.message, m.range(at: 1))
+                let dur  = strAt(entry.message, m.range(at: 2))
+                sites.append(FailureSite(file: nil, line: nil, column: nil,
+                                         testName: name, errorMessage: "failed in \(dur ?? "?")s"))
+                continue
+            }
+            // Linker error
+            if let m = Self.linkerErrorRE.firstMatch(in: entry.message, range: msgRange) {
+                let msg = strAt(entry.message, m.range(at: 1))
+                sites.append(FailureSite(file: nil, line: nil, column: nil,
+                                         testName: nil, errorMessage: "linker: \(msg ?? "")"))
+            }
+        }
+        return sites
+    }
+
+    // MARK: Helpers
+
+    private func strAt(_ s: String, _ range: NSRange) -> String? {
+        guard let r = Range(range, in: s) else { return nil }
+        return String(s[r])
+    }
+
+    private func intAt(_ s: String, _ range: NSRange) -> Int? {
+        guard let str = strAt(s, range) else { return nil }
+        return Int(str)
+    }
+}

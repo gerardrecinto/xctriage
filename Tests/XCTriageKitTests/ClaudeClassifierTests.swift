@@ -1,0 +1,122 @@
+import XCTest
+@testable import XCTriageKit
+
+// Stubs URLSession responses so we can exercise ClaudeClassifier without a
+// real network call. Registered per-test via a dedicated URLSessionConfiguration.
+final class StubURLProtocol: URLProtocol {
+    // Test-only fixture state, set synchronously before each stubbed request
+    // and never mutated concurrently, so opting out of strict checking is safe.
+    nonisolated(unsafe) static var responseData: Data = Data()
+    nonisolated(unsafe) static var statusCode: Int = 200
+
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://api.anthropic.com/v1/messages")!,
+            statusCode: Self.statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Self.responseData)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+final class ClaudeClassifierTests: XCTestCase {
+
+    private func stubbedSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubURLProtocol.self]
+        return URLSession(configuration: config)
+    }
+
+    func test_classify_decodesWellFormedResponse() async throws {
+        let responseJSON = """
+        {"category":"compilation_error","confidence":0.9,"summary":"bad import",
+         "suggested_fix":"check imports","failure_sites":[{"file":"Foo.swift","line":10,
+         "test_name":null,"error_message":"unresolved identifier"}]}
+        """
+        let payload: [String: Any] = [
+            "content": [
+                ["type": "text", "text": responseJSON]
+            ]
+        ]
+        StubURLProtocol.responseData = try JSONSerialization.data(withJSONObject: payload)
+        StubURLProtocol.statusCode = 200
+
+        let classifier = ClaudeClassifier(apiKey: "test-key", session: stubbedSession())
+        let entry = LogEntry(lineNumber: 1, level: .error, message: "boom", raw: "boom")
+        let result = try await classifier.classify([entry])
+
+        XCTAssertEqual(result.category, .compilationError)
+        XCTAssertEqual(result.confidence, 0.9)
+        XCTAssertTrue(result.llmUsed)
+        XCTAssertEqual(result.failureSites.first?.file, "Foo.swift")
+        XCTAssertEqual(result.failureSites.first?.line, 10)
+    }
+
+    func test_classify_stripsMarkdownCodeFence() async throws {
+        let payload: [String: Any] = [
+            "content": [
+                ["type": "text", "text": "```json\n{\"category\":\"timeout\",\"confidence\":0.7,\"summary\":\"slow\"}\n```"]
+            ]
+        ]
+        StubURLProtocol.responseData = try JSONSerialization.data(withJSONObject: payload)
+        StubURLProtocol.statusCode = 200
+
+        let classifier = ClaudeClassifier(apiKey: "test-key", session: stubbedSession())
+        let result = try await classifier.classify([LogEntry(lineNumber: 1, level: .error, message: "boom", raw: "boom")])
+
+        XCTAssertEqual(result.category, .timeout)
+    }
+
+    func test_classify_throwsOnNonJSONResponseBody() async {
+        StubURLProtocol.responseData = Data("not json at all".utf8)
+        StubURLProtocol.statusCode = 200
+
+        let classifier = ClaudeClassifier(apiKey: "test-key", session: stubbedSession())
+        do {
+            _ = try await classifier.classify([LogEntry(lineNumber: 1, level: .error, message: "boom", raw: "boom")])
+            XCTFail("expected parseError for malformed API response")
+        } catch TriageError.parseError {
+            // expected: malformed upstream JSON must not crash the process
+        } catch {
+            XCTFail("expected TriageError.parseError, got \(error)")
+        }
+    }
+
+    func test_classify_throwsOnHTTPErrorStatus() async {
+        StubURLProtocol.responseData = Data("{\"error\":\"rate limited\"}".utf8)
+        StubURLProtocol.statusCode = 429
+
+        let classifier = ClaudeClassifier(apiKey: "test-key", session: stubbedSession())
+        do {
+            _ = try await classifier.classify([LogEntry(lineNumber: 1, level: .error, message: "boom", raw: "boom")])
+            XCTFail("expected claudeAPIError for non-200 response")
+        } catch TriageError.claudeAPIError(let code, _) {
+            XCTAssertEqual(code, 429)
+        } catch {
+            XCTFail("expected TriageError.claudeAPIError, got \(error)")
+        }
+    }
+
+    func test_classify_fallsBackToUnknownCategoryForUnrecognizedString() async throws {
+        let payload: [String: Any] = [
+            "content": [
+                ["type": "text", "text": "{\"category\":\"not_a_real_category\",\"confidence\":0.5,\"summary\":\"?\"}"]
+            ]
+        ]
+        StubURLProtocol.responseData = try JSONSerialization.data(withJSONObject: payload)
+        StubURLProtocol.statusCode = 200
+
+        let classifier = ClaudeClassifier(apiKey: "test-key", session: stubbedSession())
+        let result = try await classifier.classify([LogEntry(lineNumber: 1, level: .error, message: "boom", raw: "boom")])
+
+        XCTAssertEqual(result.category, .unknown)
+    }
+}

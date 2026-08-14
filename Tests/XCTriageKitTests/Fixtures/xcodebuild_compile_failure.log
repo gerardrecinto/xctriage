@@ -1,0 +1,22 @@
+Build settings from command line:
+    ARCHS = arm64
+    CONFIGURATION = Debug
+    SDKROOT = iphoneos18.4
+
+=== BUILD TARGET CoreMediaPipelineTests OF PROJECT CoreMediaCI CONFIGURATION Debug ===
+
+CompileSwiftSources normal arm64 com.apple.xcode.tools.swift.compiler
+
+/Users/runner/work/CoreMediaCI/Sources/MediaDecoder.swift:142:17: error: use of unresolved identifier 'AVAssetTrackSegment'
+        let segment = AVAssetTrackSegment(timeRange: range)
+                      ^~~~~~~~~~~~~~~~~~~~
+/Users/runner/work/CoreMediaCI/Sources/MediaDecoder.swift:156:9: error: cannot convert value of type 'CMTime' to specified type 'Double'
+        let duration: Double = asset.duration
+                               ^~~~~~~~~~~~~
+/Users/runner/work/CoreMediaCI/Sources/AudioBufferProcessor.swift:89:22: error: value of type 'AVAudioFormat' has no member 'channelCapacity'
+        let capacity = format.channelCapacity
+                              ^~~~~~~~~~~~~~~
+
+CompileSwiftSources failed with a nonzero exit code
+
+** BUILD FAILED **
