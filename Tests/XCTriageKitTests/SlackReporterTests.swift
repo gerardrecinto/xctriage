@@ -38,7 +38,7 @@ final class SlackReporterTests: XCTestCase {
     }
 
     // Regression test: a failed webhook POST used to surface as
-    // TriageError.claudeAPIError(0, ...) — the wrong error case, and a
+    // TriageError.claudeAPIError(0, ...): the wrong error case, and a
     // hardcoded 0 that discarded the real HTTP status.
     func test_report_throwsSlackWebhookFailedWithRealStatusCode_onNon200() async {
         StubURLProtocol.responseData = Data("invalid_payload".utf8)

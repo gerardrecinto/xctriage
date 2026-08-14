@@ -5,14 +5,14 @@
 ### Fixed
 - `XCResultParser` failed to extract file/line/column for every failure site: it parsed the URL's query string, but xcresulttool's `DocumentLocation` URLs encode `StartingLineNumber`/`StartingColumnNumber` in the fragment (`file:///path#StartingLineNumber=10&...`), not the query. Failure sites from `.xcresult` bundles were silently coming back with no location.
 - `XCResultParser` could deadlock on large `.xcresult` bundles: it read stdout only after the `xcresulttool` process exited, which blocks forever once output exceeds the pipe's kernel buffer (64KB) because the child blocks writing to a full pipe while the parent waits for a termination that can't happen. Now drains both pipes continuously via `readabilityHandler`.
-- `SlackReporter` threw `TriageError.claudeAPIError(0, ...)` on a failed webhook POST — wrong error case, and a hardcoded `0` that discarded the real HTTP status. Added `TriageError.slackWebhookFailed(Int, String)` and surfaced the actual status code.
+- `SlackReporter` threw `TriageError.claudeAPIError(0, ...)` on a failed webhook POST: wrong error case, and a hardcoded `0` that discarded the real HTTP status. Added `TriageError.slackWebhookFailed(Int, String)` and surfaced the actual status code.
 - `xctriage flaky` built each row by interpolating the raw test name into a `String(format:)` template. A test name containing `%` (parameterized/perf test names do this) would be reinterpreted as a format specifier instead of literal text. Extracted `FlakyBarFormatter` so score formatting and the test name are never combined into one format string.
 - `TerminalReporter` hardcoded `"Claude xcodebuild"` in the analysis-method line regardless of the report's actual source, so triaging a GitHub Actions or xcresult build under `--llm` always mislabeled itself as xcodebuild.
 
 ### Added
-- Unit tests for `FlakyTestTracker`, `TerminalReporter`, `JSONReporter`, `SlackReporter`, `XCResultParser`, and `FlakyBarFormatter` — previously untested (22 → 47 tests).
+- Unit tests for `FlakyTestTracker`, `TerminalReporter`, `JSONReporter`, `SlackReporter`, `XCResultParser`, and `FlakyBarFormatter`, previously untested (22 to 47 tests).
 - Trivy dependency/secret/misconfig scanning in both CI systems (GitHub Actions job uploads SARIF to Code Scanning; Jenkins stage archives JSON).
-- Semgrep SAST stage in Jenkins, alongside GitHub Actions' existing CodeQL — CodeQL isn't practical to self-host in Jenkins without a GHAS license, so the two CI systems use different SAST tooling for the same purpose.
+- Semgrep SAST stage in Jenkins, alongside GitHub Actions' existing CodeQL: CodeQL isn't practical to self-host in Jenkins without a GHAS license, so the two CI systems use different SAST tooling for the same purpose.
 - `Lint` stage in Jenkins (SwiftLint), matching what GitHub Actions already ran.
 
 ### Changed

@@ -111,7 +111,7 @@ public actor XCResultParser {
     // xcresulttool's DocumentLocation URLs encode line/column as a fragment,
     // not a query string: file:///path/File.swift#StartingLineNumber=10&StartingColumnNumber=5
     // URLComponents.queryItems only parses the `?query` half of a URL, so it
-    // silently returns nil for these — every failure site's file/line/column
+    // silently returns nil for these: every failure site's file/line/column
     // was previously lost. Parse the fragment's key=value pairs directly.
     private func parseFileURL(_ urlString: String?) -> (String?, Int?, Int?) {
         guard let str = urlString,
