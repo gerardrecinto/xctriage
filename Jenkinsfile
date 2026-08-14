@@ -83,14 +83,19 @@ pipeline {
 
         stage('Test') {
             steps {
-                sh '''
-                    swift test --enable-code-coverage 2>&1 | tee test.log
-                    # Export JUnit XML for Jenkins test reporter
-                    xcrun xcresulttool get \
-                        --format json \
-                        --path .build/debug/*.xcresult \
-                        > xcresult_summary.json 2>/dev/null || true
-                '''
+                // catchError lets the pipeline reach Auto-Remediate instead of
+                // aborting outright on failure; the stage/build still report
+                // FAILURE unless Auto-Remediate clears it after a successful retry.
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    sh '''
+                        swift test --enable-code-coverage 2>&1 | tee test.log
+                        # Export JUnit XML for Jenkins test reporter
+                        xcrun xcresulttool get \
+                            --format json \
+                            --path .build/debug/*.xcresult \
+                            > xcresult_summary.json 2>/dev/null || true
+                    '''
+                }
             }
             post {
                 always {
@@ -103,14 +108,67 @@ pipeline {
                     '''
                     archiveArtifacts artifacts: 'triage_report.json, xcresult_summary.json', allowEmptyArchive: true
                 }
-                failure {
+            }
+        }
+
+        // Bounded, rule-gated auto-remediation. The LLM only picks the
+        // category; it never decides the action. Only "flaky_test" at
+        // high confidence gets an automatic retry, one time. Every other
+        // category (compilation error, dependency failure, OOM, ...) needs
+        // a human, so this just posts the LLM's suggested fix to Slack and
+        // leaves the build failed. Never touches production, never retries
+        // more than once, never runs for anything but a flaky-test verdict.
+        stage('Auto-Remediate (LLM)') {
+            when {
+                expression { currentBuild.currentResult == 'FAILURE' }
+            }
+            steps {
+                script {
                     sh '''
                         .build/release/xctriage analyze test.log \
                             --source xcodebuild \
                             --build-id "${BUILD_TAG}" \
                             --llm \
-                            --output slack
+                            --output json > remediation_triage.json || true
                     '''
+                    def category = sh(
+                        script: "python3 -c \"import json; print(json.load(open('remediation_triage.json'))['classification']['category'])\" 2>/dev/null || echo unknown",
+                        returnStdout: true
+                    ).trim()
+                    def confidence = sh(
+                        script: "python3 -c \"import json; print(json.load(open('remediation_triage.json'))['classification']['confidence'])\" 2>/dev/null || echo 0",
+                        returnStdout: true
+                    ).trim().toFloat()
+
+                    echo "LLM classification: ${category} (confidence ${confidence})"
+
+                    if (category == 'flaky_test' && confidence >= 0.75) {
+                        echo "High-confidence flaky-test verdict: retrying the test suite once."
+                        try {
+                            sh 'swift test --enable-code-coverage 2>&1 | tee test.log'
+                            currentBuild.result = 'SUCCESS'
+                            echo "Retry passed. Flaky test auto-remediated, build marked SUCCESS."
+                        } catch (err) {
+                            echo "Retry failed too. Leaving build as FAILURE for a human to look at."
+                            sh '''
+                                .build/release/xctriage analyze test.log \
+                                    --source xcodebuild \
+                                    --build-id "${BUILD_TAG}" \
+                                    --llm \
+                                    --output slack
+                            '''
+                        }
+                    } else {
+                        echo "Category '${category}' has no safe auto-fix. Posting the LLM's suggested fix to Slack for a human."
+                        sh '''
+                            .build/release/xctriage analyze test.log \
+                                --source xcodebuild \
+                                --build-id "${BUILD_TAG}" \
+                                --llm \
+                                --output slack
+                        '''
+                    }
+                    archiveArtifacts artifacts: 'remediation_triage.json', allowEmptyArchive: true
                 }
             }
         }

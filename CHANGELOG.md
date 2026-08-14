@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.0
+
+### Added
+- Sonnet 5 support: `ClaudeClassifier` now defaults to `claude-sonnet-5` (was `claude-sonnet-4-6`).
+- Bounded LLM auto-remediation stage in Jenkins. On a test failure, `xctriage --llm` classifies the failure; only a high-confidence (>=0.75) `flaky_test` verdict gets an automatic one-time retry. Every other category posts the LLM's suggested fix to Slack and leaves the build failed for a human. The LLM picks the category, never the action.
+
+### Changed
+- README Claude badge updated to Sonnet 5.
+
 ## v1.2.0
 
 ### Fixed

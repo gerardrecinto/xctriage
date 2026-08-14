@@ -6,7 +6,7 @@
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple&logoColor=white)
 ![Tests](https://img.shields.io/badge/Tests-47%20passed-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
-![Claude](https://img.shields.io/badge/Claude-Sonnet_4.6-orange?logo=anthropic&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude-Sonnet_5-orange?logo=anthropic&logoColor=white)
 
 ![xctriage logo](docs/assets/logo.svg)
 

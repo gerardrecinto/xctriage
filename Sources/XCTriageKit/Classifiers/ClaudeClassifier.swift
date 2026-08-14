@@ -26,7 +26,7 @@ public actor ClaudeClassifier {
 
     public init(
         apiKey: String,
-        model: String = "claude-sonnet-4-6",
+        model: String = "claude-sonnet-5",
         session: URLSession = .shared
     ) {
         self.apiKey = apiKey
