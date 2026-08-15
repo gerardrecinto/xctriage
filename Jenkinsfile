@@ -32,6 +32,7 @@ pipeline {
         XCRESULT_SUMMARY_JSON  = 'xcresult_summary.json'
         TRIAGE_REPORT_JSON     = 'triage_report.json'
         REMEDIATION_JSON       = 'remediation_triage.json'
+        REMEDIATION_DIFF       = 'remediation_proposal.diff'
         SEMGREP_RESULTS_JSON   = 'semgrep-results.json'
         TRIVY_RESULTS_JSON     = 'trivy-results.json'
 
@@ -148,11 +149,20 @@ pipeline {
         // Bounded, rule-gated auto-remediation. The LLM only picks the
         // category; it never decides the action. Only "flaky_test" at
         // FLAKY_CONFIDENCE_THRESHOLD or higher gets an automatic retry, one
-        // time. Every other category (compilation error, dependency failure,
+        // time. "compilation_error" is the one other category
+        // RemediationPolicy allows a patch attempt for: `xctriage remediate`
+        // fingerprints the failure, gates it through the same policy, asks
+        // Claude for a single-file diff, and proves it by building and
+        // testing it inside an isolated git worktree before the diff ever
+        // reaches this pipeline. A non-zero exit means policy or the
+        // sandbox rejected it (wrong category, too many files, forbidden
+        // path, build/test still failing) — that's not a pipeline error,
+        // it's the gate working, so the build still falls through to the
+        // Slack notification. Every other category (dependency failure,
         // OOM, ...) needs a human, so this just posts the LLM's suggested
-        // fix to Slack and leaves the build failed. Never touches
-        // production, never retries more than once, never runs for anything
-        // but a flaky-test verdict.
+        // fix to Slack and leaves the build failed. Nothing here ever
+        // applies a diff to the working tree or opens a PR — the artifact
+        // is a proposal for a human to read.
         stage('Auto-Remediate (LLM)') {
             when {
                 expression { currentBuild.currentResult == 'FAILURE' }
@@ -194,6 +204,30 @@ pipeline {
                                     --output slack
                             '''
                         }
+                    } else if (category == 'compilation_error') {
+                        echo "Compilation-error verdict: asking xctriage remediate for a policy-gated, sandbox-validated patch proposal."
+                        def remediateStatus = sh(
+                            script: '''
+                                "${XCTRIAGE_BIN}" remediate "${TEST_LOG}" \
+                                    --source "${CI_SOURCE}" \
+                                    --repo-root "${WORKSPACE}" \
+                                    --out "${REMEDIATION_DIFF}"
+                            ''',
+                            returnStatus: true
+                        )
+                        if (remediateStatus == 0) {
+                            echo "Sandbox-validated patch proposal written to ${REMEDIATION_DIFF}. Archived for human review; not applied or merged."
+                            archiveArtifacts artifacts: "${REMEDIATION_DIFF}", allowEmptyArchive: true
+                        } else {
+                            echo "No remediation proposal (policy or sandbox rejected it, exit ${remediateStatus}). Posting the LLM's suggested fix to Slack for a human."
+                        }
+                        sh '''
+                            "${XCTRIAGE_BIN}" analyze "${TEST_LOG}" \
+                                --source "${CI_SOURCE}" \
+                                --build-id "${BUILD_TAG}" \
+                                --llm \
+                                --output slack
+                        '''
                     } else {
                         echo "Category '${category}' has no safe auto-fix. Posting the LLM's suggested fix to Slack for a human."
                         sh '''

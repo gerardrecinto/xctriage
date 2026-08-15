@@ -22,6 +22,7 @@ env:
   BUILD_LOG: build.log
   TEST_LOG: test.log
   REMEDIATION_JSON: remediation_triage.json
+  REMEDIATION_DIFF: remediation_proposal.diff
   TRIVY_RESULTS_SARIF: trivy-results.sarif
 
 jobs:
@@ -130,6 +131,35 @@ jobs:
           steps.classify.outputs.category == 'flaky_test' &&
           fromJSON(steps.classify.outputs.confidence) >= fromJSON(env.FLAKY_CONFIDENCE_THRESHOLD)
         run: swift test 2>&1 | tee "$TEST_LOG"
+
+      # The one other category RemediationPolicy allows a patch attempt for.
+      # `xctriage remediate` fingerprints the failure, re-runs it through the
+      # same policy gate, asks Claude for a single-file diff, and proves it
+      # by building and testing inside an isolated git worktree before this
+      # step ever sees output. continue-on-error because a non-zero exit
+      # here means policy or the sandbox rejected the proposal (wrong
+      # category, too many files touched, forbidden path, build/test still
+      # red) — that's the gate working, not a workflow failure, so the job
+      # still falls through to the Slack notification either way.
+      - name: "Auto-Remediate: propose sandboxed patch (compilation_error)"
+        id: propose_patch
+        if: >
+          steps.test.outcome == 'failure' &&
+          steps.retry.outcome != 'success' &&
+          steps.classify.outputs.category == 'compilation_error'
+        continue-on-error: true
+        run: |
+          "$XCTRIAGE_BIN" remediate "$TEST_LOG" \
+            --source "$CI_SOURCE" \
+            --repo-root . \
+            --out "$REMEDIATION_DIFF"
+
+      - name: Upload remediation proposal
+        if: steps.propose_patch.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: remediation-proposal-${{ matrix.xcode }}
+          path: ${{ env.REMEDIATION_DIFF }}
 
       - name: "Auto-Remediate: notify (no safe auto-fix)"
         if: steps.test.outcome == 'failure' && steps.retry.outcome != 'success'

@@ -177,8 +177,9 @@ Both pipelines run the same checks in the same order: resolve, lint (SwiftLint),
 Both pipelines classify test failures with Claude before deciding what to do about them, and both apply the same rule: **the LLM only picks the failure category, it never picks the action.**
 
 - A `flaky_test` verdict at 0.75+ confidence gets one automatic retry. If the retry passes, the build goes green and nobody gets paged for a flake.
-- Every other category (compilation error, dependency failure, OOM, timeout, infra failure) has no safe auto-fix, so the pipeline posts the LLM's suggested fix to Slack and leaves the build failed for a human.
-- The retry only ever happens once. There's no loop, no escalating retry count, and nothing outside `flaky_test` is eligible.
+- A `compilation_error` verdict gets a policy-gated remediation attempt instead: `xctriage remediate` fingerprints the failure, re-checks it against `RemediationPolicy` (category allowlist, confidence floor, forbidden paths), asks Claude for exactly one single-file unified diff, and proves that diff by applying it inside an isolated `git worktree` and actually running `swift build` + `swift test` there. If policy or the sandbox rejects it — wrong shape, too many files, still doesn't build, still doesn't pass — the command exits non-zero and the pipeline falls through to the same Slack notification as any other unhandled category. Nothing here is ever applied to the working tree or opened as a PR; a passing proposal is archived as a build artifact for a human to read and apply by hand.
+- Every other category (dependency failure, OOM, timeout, infra failure) has no safe auto-fix, so the pipeline posts the LLM's suggested fix to Slack and leaves the build failed for a human.
+- The flaky retry only ever happens once, and the remediation attempt only ever proposes, never applies. There's no loop, no escalating retry count, and category eligibility is enforced by `RemediationPolicy` in code, not by pipeline logic trusting the model's word for it.
 
 **Jenkinsfile** (`stage('Auto-Remediate (LLM)')`):
 
@@ -186,6 +187,12 @@ Both pipelines classify test failures with Claude before deciding what to do abo
 if (category == 'flaky_test' && confidence >= threshold) {
     sh 'swift test --enable-code-coverage 2>&1 | tee "${TEST_LOG}"'
     currentBuild.result = 'SUCCESS'
+} else if (category == 'compilation_error') {
+    def status = sh(script: '"${XCTRIAGE_BIN}" remediate "${TEST_LOG}" --source "${CI_SOURCE}" --repo-root "${WORKSPACE}" --out "${REMEDIATION_DIFF}"', returnStatus: true)
+    if (status == 0) {
+        archiveArtifacts artifacts: "${REMEDIATION_DIFF}", allowEmptyArchive: true
+    }
+    sh '"${XCTRIAGE_BIN}" analyze "${TEST_LOG}" --source "${CI_SOURCE}" --llm --output slack'
 } else {
     sh '"${XCTRIAGE_BIN}" analyze "${TEST_LOG}" --source "${CI_SOURCE}" --llm --output slack'
 }
@@ -200,6 +207,15 @@ if (category == 'flaky_test' && confidence >= threshold) {
     steps.classify.outputs.category == 'flaky_test' &&
     fromJSON(steps.classify.outputs.confidence) >= fromJSON(env.FLAKY_CONFIDENCE_THRESHOLD)
   run: swift test 2>&1 | tee test.log
+
+- name: "Auto-Remediate: propose sandboxed patch (compilation_error)"
+  id: propose_patch
+  if: >
+    steps.test.outcome == 'failure' &&
+    steps.retry.outcome != 'success' &&
+    steps.classify.outputs.category == 'compilation_error'
+  continue-on-error: true
+  run: "$XCTRIAGE_BIN" remediate "$TEST_LOG" --source "$CI_SOURCE" --repo-root . --out "$REMEDIATION_DIFF"
 ```
 
 Nothing above is an inline literal buried in a step: the confidence threshold, log paths, xctriage binary path, and Trivy severity are all named pipeline variables (Jenkins build parameters and `environment {}` entries; GitHub Actions job-level `env:`), and the agent label / credential IDs are controller-level overrides (`env.XCTRIAGE_AGENT_LABEL`, `env.XCTRIAGE_ANTHROPIC_CREDENTIAL_ID`, `env.XCTRIAGE_SLACK_CREDENTIAL_ID`) rather than build parameters, since those pick *where* and *as whom* the pipeline runs and shouldn't be settable by whoever triggers a build.
