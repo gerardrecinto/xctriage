@@ -8,7 +8,7 @@ struct XCTriage: AsyncParsableCommand {
         commandName: "xctriage",
         abstract: "AI-powered CI failure analysis for Apple platforms",
         version: "1.3.0",
-        subcommands: [Analyze.self, Flaky.self]
+        subcommands: [Analyze.self, Flaky.self, Remediate.self]
     )
 }
 
@@ -157,6 +157,141 @@ struct Analyze: AsyncParsableCommand {
             try await SlackReporter(webhookURL: url).report(report)
         default:
             TerminalReporter().report(report)
+        }
+    }
+}
+
+// MARK: remediate
+
+struct Remediate: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Propose a minimal-diff fix for a classified failure (policy-gated, never auto-applied)"
+    )
+
+    @Argument(help: "Build log path (- for stdin) or .xcresult bundle path")
+    var input: String = "-"
+
+    @Option(name: .shortAndLong, help: "CI source: xcodebuild | xcresult | github | generic")
+    var source: String = "xcodebuild"
+
+    @Option(name: .long, help: "Root directory failing file paths are relative to")
+    var repoRoot: String = "."
+
+    @Option(name: .long, help: "Remediation attempt number, checked against the policy's max-attempts gate")
+    var attempt: Int = 1
+
+    @Option(name: .long, help: "Write the proposed unified diff to this path instead of stdout")
+    var out: String?
+
+    @Flag(name: .long, help: "Skip sandbox build/test validation (faster, but the proposal is unverified)")
+    var skipSandbox: Bool = false
+
+    mutating func run() async throws {
+        let apiKey = ProcessInfo.processInfo.environment["XCTRIAGE_ANTHROPIC_API_KEY"] ?? ""
+        guard !apiKey.isEmpty else {
+            throw TriageError.missingAPIKey
+        }
+
+        let failureSites: [FailureSite]
+        let category: FailureCategory
+        let confidence: Double
+
+        if input.hasSuffix(".xcresult") {
+            let parser = XCResultParser()
+            let sites = try await parser.testFailures(bundlePath: input)
+            let entries = sites.map { s in
+                LogEntry(lineNumber: 0, level: .error,
+                         message: "\(s.locationDescription): \(s.errorMessage)", raw: "")
+            }
+            let result = RuleClassifier().classify(entries)
+            failureSites = sites
+            category = result.category
+            confidence = result.confidence
+        } else {
+            let logText: String
+            if input == "-" {
+                logText = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            } else {
+                guard let text = try? String(contentsOfFile: input, encoding: .utf8) else {
+                    throw TriageError.fileNotFound(input)
+                }
+                logText = text
+            }
+            let parser = BuildLogParser()
+            let entries = parser.parse(logText)
+            let context = parser.extractFailureContext(entries)
+            let result = RuleClassifier().classify(context)
+            failureSites = result.failureSites.isEmpty ? parser.extractFailureSites(context) : result.failureSites
+            category = result.category
+            confidence = result.confidence
+        }
+
+        guard let site = failureSites.first else {
+            print("No failure sites found; nothing to remediate.")
+            return
+        }
+
+        let fingerprint = FailureFingerprint(category: category, failureSites: failureSites)
+        let policy = RemediationPolicy()
+
+        let eligibility = policy.isEligibleForRemediation(category: category, confidence: confidence, attemptNumber: attempt)
+        guard case .allowed = eligibility else {
+            if case .denied(let reason) = eligibility {
+                print("Remediation blocked [\(fingerprint.value)]: \(reason)")
+            }
+            Foundation.exit(4)
+        }
+
+        guard let file = site.file else {
+            print("Remediation blocked [\(fingerprint.value)]: failure site has no associated file")
+            Foundation.exit(4)
+        }
+
+        let filePath = (repoRoot as NSString).appendingPathComponent(file)
+        guard let fileContents = try? String(contentsOfFile: filePath, encoding: .utf8) else {
+            throw TriageError.fileNotFound(filePath)
+        }
+
+        let generator = PatchGenerator(apiKey: apiKey)
+        let proposal = try await generator.proposePatch(category: category, failureSite: site, fileContents: fileContents)
+
+        let patchDecision = policy.isPatchAllowed(filesChanged: [proposal.filePath])
+        guard case .allowed = patchDecision else {
+            if case .denied(let reason) = patchDecision {
+                print("Patch blocked [\(fingerprint.value)]: \(reason)")
+            }
+            Foundation.exit(4)
+        }
+
+        var sandboxLine = "Sandbox:     skipped (--skip-sandbox)"
+        if !skipSandbox {
+            let sandboxResult = try await SandboxValidator().validate(
+                proposal: proposal,
+                repoRoot: repoRoot,
+                testFilter: site.testName
+            )
+            guard sandboxResult.passed else {
+                print("Sandbox rejected [\(fingerprint.value)]: applied=\(sandboxResult.applied) build=\(sandboxResult.buildSucceeded) test=\(sandboxResult.testSucceeded)")
+                print(sandboxResult.output)
+                Foundation.exit(4)
+            }
+            sandboxLine = "Sandbox:     build passed, target test passed"
+        }
+
+        let header = """
+        Fingerprint: \(fingerprint.value)
+        Category:    \(category.displayName)
+        Confidence:  \(String(format: "%.2f", proposal.confidence))
+        \(sandboxLine)
+        Rationale:   \(proposal.rationale)
+
+        """
+
+        if let out {
+            try (header + proposal.unifiedDiff + "\n").write(toFile: out, atomically: true, encoding: .utf8)
+            print("Wrote proposal to \(out)")
+        } else {
+            print(header + proposal.unifiedDiff)
         }
     }
 }
