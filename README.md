@@ -222,6 +222,19 @@ Nothing above is an inline literal buried in a step: the confidence threshold, l
 
 ---
 
+## Where this could go
+
+Everything above is what runs today. `docs/architecture/` has a four-part design review of what a larger version of this project could look like: an agentic remediation pipeline coordinating multiple specialized agents over an Agent-to-Agent (A2A) protocol, continuous deployment with GitOps and canary rollout, a formal privacy/security threat model, and platform-scale operations.
+
+It's written as a proposal, not a changelog. Every claim in it is tagged `(MEASURED)` when it's true of the code in this repo today, or `(TARGET)` when it's a design goal with nothing built behind it yet. That distinction is the whole point of the document: it exists to be clear about the gap between what's shipped and what's proposed, not to blur it.
+
+- [Part A — Agentic Architecture & Auto-Remediation](docs/architecture/PART_A_AGENTIC_ARCHITECTURE_SECTIONS_1-33.md)
+- [Part B — Continuous Deployment & DevOps System Design](docs/architecture/PART_B_DEVOPS_SYSTEM_DESIGN_SECTIONS_34-114.md)
+- [Part C — Privacy, Security & Reliability](docs/architecture/PART_C_PRIVACY_SECURITY_PHILOSOPHY_SECTIONS_115-210.md)
+- [Part D — Product, Operations & Final Review](docs/architecture/PART_D_PRODUCT_OPERATIONS_SECTIONS_211-307.md)
+
+---
+
 ## Install
 
 ### Download binary (macOS)
