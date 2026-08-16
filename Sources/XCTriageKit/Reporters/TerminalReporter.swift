@@ -88,8 +88,14 @@ public struct TerminalReporter: Sendable {
     private func bold(_ text: String) -> String { "\u{001B}[1m\(text)\u{001B}[0m" }
     private func dim(_ text: String) -> String { "\u{001B}[2m\(text)\u{001B}[0m" }
 
+    // confidence is only documented "0.0-1.0", never enforced — ClaudeClassifier
+    // parses it straight out of untrusted LLM JSON. Clamp the bar (matching
+    // FlakyBarFormatter's identical clamp) so an out-of-range value degrades
+    // to a full/empty bar instead of crashing on a negative repeat count;
+    // the raw percentage is still shown so an out-of-range value stays visible.
     private func confidenceBar(_ confidence: Double, width: Int = 20) -> String {
-        let filled = Int(confidence * Double(width))
+        let clamped = min(max(confidence, 0), 1)
+        let filled = Int((clamped * Double(width)).rounded())
         let bar = String(repeating: "█", count: filled) + String(repeating: "░", count: width - filled)
         let color: ANSIColor = confidence >= 0.80 ? .green : confidence >= 0.60 ? .yellow : .red
         return "\(colored(bar, color: color)) \(Int(confidence * 100))%"
