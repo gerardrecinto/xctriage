@@ -104,11 +104,17 @@ public struct BuildLogParser: Sendable {
                                          testName: name, errorMessage: "failed in \(dur ?? "?")s"))
                 continue
             }
-            // Linker error
+            // Linker error. No file/line to key on, so dedup on the message
+            // itself — a repeated identical `ld:` line (echoed via `tee`, or
+            // the linker itself repeating a summary line) would otherwise
+            // produce one duplicate FailureSite per repetition.
             if let m = Self.linkerErrorRE.firstMatch(in: entry.message, range: msgRange) {
                 let msg = strAt(entry.message, m.range(at: 1))
-                sites.append(FailureSite(file: nil, line: nil, column: nil,
-                                         testName: nil, errorMessage: "linker: \(msg ?? "")"))
+                let key = "linker:\(msg ?? "")"
+                if seen.insert(key).inserted {
+                    sites.append(FailureSite(file: nil, line: nil, column: nil,
+                                             testName: nil, errorMessage: "linker: \(msg ?? "")"))
+                }
             }
         }
         return sites

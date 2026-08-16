@@ -64,6 +64,24 @@ final class BuildLogParserTests: XCTestCase {
         XCTAssertTrue(testSites[0].testName!.contains("testAudioDecoderBitIdentical"))
     }
 
+    func test_extractFailureSites_dedupsRepeatedLinkerError() {
+        // Unlike the Swift/ObjC compiler-error branch (deduped by file:line),
+        // the linker-error branch had no dedup at all — a log where the same
+        // `ld:` line appears twice (e.g. echoed to both a file and stdout via
+        // `tee`, or repeated by the linker itself) produced two identical
+        // FailureSites instead of one.
+        let log = """
+        ld: symbol(s) not found for architecture arm64
+        ld: symbol(s) not found for architecture arm64
+        ** BUILD FAILED **
+        """
+        let entries = parser.parse(log)
+        let context = parser.extractFailureContext(entries)
+        let sites = parser.extractFailureSites(context)
+        let linkerSites = sites.filter { $0.errorMessage.hasPrefix("linker:") }
+        XCTAssertEqual(linkerSites.count, 1)
+    }
+
     func test_parse_emptyLog() {
         let entries = parser.parse("")
         XCTAssertEqual(entries.count, 1, "Empty string yields one empty entry")
