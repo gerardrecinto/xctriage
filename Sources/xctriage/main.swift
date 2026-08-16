@@ -186,6 +186,12 @@ struct Remediate: AsyncParsableCommand {
     @Flag(name: .long, help: "Skip sandbox build/test validation (faster, but the proposal is unverified)")
     var skipSandbox: Bool = false
 
+    @Flag(name: .long, help: "Open a draft PR (via gh CLI) once policy allows the patch and sandbox validation passes. Never merges; requires --skip-sandbox to be unset.")
+    var createPR: Bool = false
+
+    @Option(name: .long, help: "Base branch to open the draft PR against (used with --create-pr)")
+    var baseBranch: String = "main"
+
     mutating func run() async throws {
         let apiKey = ProcessInfo.processInfo.environment["XCTRIAGE_ANTHROPIC_API_KEY"] ?? ""
         guard !apiKey.isEmpty else {
@@ -263,18 +269,25 @@ struct Remediate: AsyncParsableCommand {
             Foundation.exit(4)
         }
 
+        if createPR && skipSandbox {
+            print("Refusing --create-pr with --skip-sandbox: a PR must be backed by a passing sandbox validation.")
+            Foundation.exit(4)
+        }
+
         var sandboxLine = "Sandbox:     skipped (--skip-sandbox)"
+        var sandboxResult: SandboxValidator.Result?
         if !skipSandbox {
-            let sandboxResult = try await SandboxValidator().validate(
+            let result = try await SandboxValidator().validate(
                 proposal: proposal,
                 repoRoot: repoRoot,
                 testFilter: site.testName
             )
-            guard sandboxResult.passed else {
-                print("Sandbox rejected [\(fingerprint.value)]: applied=\(sandboxResult.applied) build=\(sandboxResult.buildSucceeded) test=\(sandboxResult.testSucceeded)")
-                print(sandboxResult.output)
+            guard result.passed else {
+                print("Sandbox rejected [\(fingerprint.value)]: applied=\(result.applied) build=\(result.buildSucceeded) test=\(result.testSucceeded)")
+                print(result.output)
                 Foundation.exit(4)
             }
+            sandboxResult = result
             sandboxLine = "Sandbox:     build passed, target test passed"
         }
 
@@ -292,6 +305,24 @@ struct Remediate: AsyncParsableCommand {
             print("Wrote proposal to \(out)")
         } else {
             print(header + proposal.unifiedDiff)
+        }
+
+        // Reaching here means policy allowed the patch and (unless
+        // --skip-sandbox, which --create-pr refuses above) sandbox
+        // validation passed. This only ever opens a draft PR — see
+        // GitHubPRWriter: no merge path exists in this tool.
+        if createPR, let sandboxResult {
+            let writer = GitHubPRWriter()
+            let prResult = try await writer.createDraftPR(
+                proposal: proposal,
+                fingerprint: fingerprint,
+                category: category,
+                failureSite: site,
+                sandboxResult: sandboxResult,
+                repoRoot: repoRoot,
+                baseBranch: baseBranch
+            )
+            print("Opened draft PR on branch \(prResult.branchName): \(prResult.prURL ?? "(no URL returned by gh)")")
         }
     }
 }
