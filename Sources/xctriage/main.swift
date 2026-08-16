@@ -67,23 +67,32 @@ struct Analyze: AsyncParsableCommand {
                 LogEntry(lineNumber: 0, level: .error,
                          message: "\(s.locationDescription): \(s.errorMessage)", raw: "")
             }
-            let result = RuleClassifier().classify(entries)
+            var result = RuleClassifier().classify(entries)
+
+            // Same --llm/--llm-always fallback the build-log path applies
+            // below — previously missing here entirely, so those flags were
+            // silently ignored for .xcresult input.
+            let apiKey = ProcessInfo.processInfo.environment["XCTRIAGE_ANTHROPIC_API_KEY"] ?? ""
+            if LLMFallbackPolicy.shouldUseLLM(
+                hasAPIKey: !apiKey.isEmpty, llmAlways: llmAlways, llmRequested: llm,
+                confidence: result.confidence, threshold: llmThreshold
+            ) {
+                result = try await ClaudeClassifier(apiKey: apiKey).classify(entries)
+            }
+            if result.failureSites.isEmpty {
+                result.failureSites = sites
+            }
+
             let duration = Date().timeIntervalSince(t0) * 1000
             let report = TriageReport(
                 buildID: buildID,
                 source: .xcresult,
-                classification: ClassificationResult(
-                    category: result.category,
-                    confidence: result.confidence,
-                    failureSites: sites,
-                    summary: result.summary,
-                    suggestedFix: result.suggestedFix
-                ),
+                classification: result,
                 rawLogLines: entries.count,
                 durationMS: duration
             )
             try await emitReport(report)
-            if exitCode && !sites.isEmpty {
+            if exitCode && !result.failureSites.isEmpty {
                 Foundation.exit(1)
             }
             return
@@ -101,9 +110,12 @@ struct Analyze: AsyncParsableCommand {
 
         var result = RuleClassifier().classify(context)
 
-        // LLM fallback
+        // LLM fallback — same LLMFallbackPolicy.shouldUseLLM the .xcresult branch above uses.
         let apiKey = ProcessInfo.processInfo.environment["XCTRIAGE_ANTHROPIC_API_KEY"] ?? ""
-        if !apiKey.isEmpty && (llmAlways || (llm && result.confidence < llmThreshold)) {
+        if LLMFallbackPolicy.shouldUseLLM(
+            hasAPIKey: !apiKey.isEmpty, llmAlways: llmAlways, llmRequested: llm,
+            confidence: result.confidence, threshold: llmThreshold
+        ) {
             let classifier = ClaudeClassifier(apiKey: apiKey)
             result = try await classifier.classify(context)
         }
