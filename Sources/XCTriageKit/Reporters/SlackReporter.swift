@@ -21,6 +21,20 @@ public struct SlackReporter: Sendable {
         self.session = session
     }
 
+    // Slack rejects an entire message if any single mrkdwn text block exceeds
+    // 3000 characters, so every block built from unbounded, LLM-generated
+    // text (summary, suggested fix, failure-site messages) has to be capped
+    // below that, not just the fields with a fixed short shape (build ID,
+    // confidence, etc).
+    private static let slackTextBlockLimit = 3000
+
+    private static func truncated(_ text: String) -> String {
+        guard text.count > slackTextBlockLimit else { return text }
+        let marker = "... [truncated]"
+        let keep = slackTextBlockLimit - marker.count
+        return String(text.prefix(keep)) + marker
+    }
+
     public func report(_ triage: TriageReport) async throws {
         let c = triage.classification
         let emoji = Self.categoryEmoji[c.category] ?? ":grey_question:"
@@ -41,14 +55,14 @@ public struct SlackReporter: Sendable {
             ],
             [
                 "type": "section",
-                "text": ["type": "mrkdwn", "text": "*Root cause:*\n\(c.summary)"],
+                "text": ["type": "mrkdwn", "text": Self.truncated("*Root cause:*\n\(c.summary)")],
             ],
         ]
 
         if let fix = c.suggestedFix {
             blocks.append([
                 "type": "section",
-                "text": ["type": "mrkdwn", "text": "*Suggested fix:*\n\(fix)"],
+                "text": ["type": "mrkdwn", "text": Self.truncated("*Suggested fix:*\n\(fix)")],
             ])
         }
 
@@ -58,7 +72,7 @@ public struct SlackReporter: Sendable {
             }.joined(separator: "\n")
             blocks.append([
                 "type": "section",
-                "text": ["type": "mrkdwn", "text": "*Failure sites:*\n\(sitesText)"],
+                "text": ["type": "mrkdwn", "text": Self.truncated("*Failure sites:*\n\(sitesText)")],
             ])
         }
 

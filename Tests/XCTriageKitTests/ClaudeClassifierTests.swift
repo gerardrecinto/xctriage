@@ -8,11 +8,34 @@ final class StubURLProtocol: URLProtocol {
     // and never mutated concurrently, so opting out of strict checking is safe.
     nonisolated(unsafe) static var responseData: Data = Data()
     nonisolated(unsafe) static var statusCode: Int = 200
+    // Captures the outgoing request body so a test can assert on what was
+    // actually sent, not just how the response was handled.
+    nonisolated(unsafe) static var capturedRequestBody: Data?
 
     override static func canInit(with request: URLRequest) -> Bool { true }
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        // URLSession commonly converts a URLRequest's httpBody Data into an
+        // httpBodyStream by the time URLProtocol sees it, so request.httpBody
+        // alone is often nil here — read the stream when that happens.
+        if let body = request.httpBody {
+            Self.capturedRequestBody = body
+        } else if let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var data = Data()
+            let bufferSize = 4096
+            var buffer = [UInt8](repeating: 0, count: bufferSize)
+            while stream.hasBytesAvailable {
+                let read = stream.read(&buffer, maxLength: bufferSize)
+                guard read > 0 else { break }
+                data.append(buffer, count: read)
+            }
+            Self.capturedRequestBody = data
+        } else {
+            Self.capturedRequestBody = nil
+        }
         let response = HTTPURLResponse(
             url: request.url ?? URL(string: "https://api.anthropic.com/v1/messages")!,
             statusCode: Self.statusCode,
