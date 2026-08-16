@@ -77,11 +77,26 @@ public actor SandboxValidator {
 
         // Always release the worktree, even if a later step throws or the
         // diff/build/test fails partway through — a leaked worktree would
-        // silently accumulate across every remediation attempt.
-        defer {
-            Task { _ = try? await run(gitPath, ["worktree", "remove", "--force", sandboxDir], cwd: repoRoot, timeout: timeout) }
+        // silently accumulate across every remediation attempt. This has to
+        // be awaited, not fired-and-forgotten: xctriage is a short-lived CLI
+        // process, so a detached cleanup Task races process exit and loses
+        // almost every time — see the regression test for this in
+        // SandboxValidatorTests.
+        do {
+            let result = try await runSteps(
+                proposal: proposal, sandboxDir: sandboxDir, testFilter: testFilter, timeout: timeout
+            )
+            _ = try? await run(gitPath, ["worktree", "remove", "--force", sandboxDir], cwd: repoRoot, timeout: timeout)
+            return result
+        } catch {
+            _ = try? await run(gitPath, ["worktree", "remove", "--force", sandboxDir], cwd: repoRoot, timeout: timeout)
+            throw error
         }
+    }
 
+    private func runSteps(
+        proposal: PatchProposal, sandboxDir: String, testFilter: String?, timeout: TimeInterval
+    ) async throws -> Result {
         // Real `git worktree add` creates sandboxDir itself; harmless no-op
         // there. A stubbed git in tests doesn't, so this keeps the write below
         // from failing on a directory that only the real tool would produce.
