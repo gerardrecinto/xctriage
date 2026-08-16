@@ -261,7 +261,7 @@ struct Remediate: AsyncParsableCommand {
             Foundation.exit(4)
         }
 
-        let filePath = (repoRoot as NSString).appendingPathComponent(file)
+        let filePath = FailureSitePathResolver.resolve(file: file, repoRoot: repoRoot)
         guard let fileContents = try? String(contentsOfFile: filePath, encoding: .utf8) else {
             throw TriageError.fileNotFound(filePath)
         }
