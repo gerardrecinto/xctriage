@@ -7,3 +7,5 @@ Package.resolved
 *.xcresult
 *.cast
 xcuserdata/
+.aider*
+.vscode/
