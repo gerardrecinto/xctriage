@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.4.0
+
+### Added
+- New `xctriage remediate` subcommand: fingerprint a failure, run it through a deterministic two-gate policy check (`RemediationPolicy`), generate a single-file patch with Claude (`PatchGenerator`), validate it in a disposable git worktree with a real `swift build` + `swift test` (`SandboxValidator`), and optionally open a draft PR (`GitHubPRWriter`, `--create-pr`, never merges). Wired into both CI systems for `compilation_error` failures.
+- `RemediationStateMachine`: durable, SQLite-backed state machine for remediation attempts, keyed by failure fingerprint. Every transition is a persisted row; illegal jumps throw; a crashed process recovers from the last known state instead of repeating or losing work.
+- `IdempotencyStore`: SQLite-backed dedup for retried `--create-pr` triggers. A repeated invocation for the same fingerprint reuses the recorded PR result instead of opening a duplicate.
+- `SandboxValidator` now takes a `timeout` (CLI: `--sandbox-timeout`, default 300s per step) and actually kills a hung `swift build`/`swift test` instead of hanging the CLI forever.
+- `FlakyTestTracker.quarantineCandidates(threshold:)`, wired into `xctriage flaky --show-quarantine-candidates` — the quarantine threshold the tracker's own header comment had documented since it was written, now actually computed.
+- `RemediationPolicy`'s forbidden-path list now also covers its own remediation pipeline (`Sources/XCTriageKit/Remediation/`) and the CLI entrypoint (`Sources/xctriage/`), closing a gap where a `compilation_error` in the tool's own safety machinery could have produced a PR patching that machinery.
+- `docs/adr/`: 8 Architecture Decision Records for the real, already-built parts of the system, each with alternatives considered and why they were rejected.
+- `docs/runbooks/`: 5 operational runbooks for real failure modes (GitHub rate limits, LLM provider outages, duplicate PRs, sandbox hangs, SQLite lock contention).
+- `docs/assets/`: 3 SVG diagrams (remediation state machine, CI pipeline, trust boundaries) drawn from the actual code.
+- `docs/architecture/WHAT_I_DID_NOT_BUILD.md` and `docs/architecture/HIGH_LEVEL_ARCHITECTURE.md`: what's explicitly out of scope and why, and one high-level diagram covering the real CI flow plus the target CD flow.
+
+### Fixed
+- `Remediate.run()` had grown past SwiftLint's `function_body_length`/`function_parameter_count` error thresholds after the state-machine/idempotency wiring, breaking CI. Split into `classifyFailure`, `runSandboxIfNeeded`, and `openDraftPRIfRequested`.
+
 ## v1.3.0
 
 ### Added
