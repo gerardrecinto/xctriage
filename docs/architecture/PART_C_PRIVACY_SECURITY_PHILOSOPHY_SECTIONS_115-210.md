@@ -25,10 +25,10 @@ one local SQLite file, no orchestration framework. Three components do all
 the AI-adjacent work: `RuleClassifier` (deterministic), `ClaudeClassifier`
 (the one LLM call, gated by a confidence threshold), and `PatchGenerator`
 (the other LLM call, gated by two policy checks and a real build). That is
-the whole "what we deliberately did not build" story in miniature, before
+the whole "what I deliberately did not build" story in miniature, before
 it is even a formal section.
 
-### What We Deliberately Did Not Build
+### What I Deliberately Did Not Build
 
 - No message broker. **(MEASURED)** xctriage is a CLI invocation, not a
   service; there is nothing running between calls to have a queue for.

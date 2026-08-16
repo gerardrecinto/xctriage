@@ -732,7 +732,7 @@ there's a real incident stream to close the loop on.
 **(TARGET)** No incidents have occurred (no production deployment exists to
 have an incident in). Template proposed for future use, kept intentionally
 lightweight: Impact, Timeline, Detection, Root Cause, Contributing Factors,
-What Went Well, What Didn't, Corrective Actions, How We Prevent Recurrence.
+What Went Well, What Didn't, Corrective Actions, How I Prevent Recurrence.
 
 ## 279. Corrective Action Ownership
 

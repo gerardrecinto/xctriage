@@ -1,7 +1,7 @@
 import XCTest
 @testable import XCTriageKit
 
-// Stubs URLSession responses so we can exercise ClaudeClassifier without a
+// Stubs URLSession responses so I can exercise ClaudeClassifier without a
 // real network call. Registered per-test via a dedicated URLSessionConfiguration.
 final class StubURLProtocol: URLProtocol {
     // Test-only fixture state, set synchronously before each stubbed request

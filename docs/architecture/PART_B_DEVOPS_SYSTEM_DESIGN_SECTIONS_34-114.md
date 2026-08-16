@@ -785,7 +785,7 @@ infra-wide correlated failure   -> one shared incident, not N
 
 **(TARGET/philosophy)** For every component in this document: what problem does it solve today? If the honest answer is weak, it doesn't belong in the MVP.
 
-### What We Deliberately Did Not Build
+### What I Deliberately Did Not Build
 
 ```
 No event bus (Kafka/SQS) - no measured event volume or replay requirement yet.
@@ -796,7 +796,7 @@ No multi-agent framework - one deterministic pipeline (parse -> classify
   -> fingerprint -> policy -> generate -> policy -> sandbox) plus one
   reasoning-model call is simpler and already fully built (MEASURED).
 No vector database - exact fingerprint lookup (MEASURED, O(1) SHA256
-  match) solves the "have we seen this before" question xctriage actually
+  match) solves the "have I seen this before" question xctriage actually
   has today; semantic similarity is a target-scale addition, not a
   current gap.
 ```
@@ -835,7 +835,7 @@ This document optimizes for correctness, clarity, and honest labeling of what's 
 
 **Platform Engineer - "will teams actually adopt this?"** Top concern: today it's a single-user local CLI (MEASURED); nothing about multi-team config, ownership routing, or a golden path (section 98) exists yet. Gap acknowledged, not solved in this document.
 
-**Principal Engineer - "which components are unnecessary?"** Answer: everything in section 110's "what we deliberately did not build" list, kept out on purpose. The one component worth challenging hardest in this document is the proposed event bus (section 34/49) - worth deferring until failure volume is actually measured, not assumed.
+**Principal Engineer - "which components are unnecessary?"** Answer: everything in section 110's "what I deliberately did not build" list (also `docs/architecture/WHAT_I_DID_NOT_BUILD.md`), kept out on purpose. The one component worth challenging hardest in this document is the proposed event bus (section 34/49) - worth deferring until failure volume is actually measured, not assumed.
 
 ### Architecture I'd Ship Today
 

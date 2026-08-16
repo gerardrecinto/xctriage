@@ -3,7 +3,7 @@ import XCTest
 
 final class XCResultParserTests: XCTestCase {
 
-    // Writes a throwaway shell script standing in for `xcrun`, so we can drive
+    // Writes a throwaway shell script standing in for `xcrun`, so I can drive
     // XCResultParser's Process/Pipe handling without a real .xcresult bundle
     // or Xcode toolchain dependency in CI.
     private func makeFakeXcrun(stdout: String, exitCode: Int32 = 0) throws -> String {

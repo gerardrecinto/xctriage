@@ -1,4 +1,4 @@
-# What We Deliberately Did Not Build
+# What I Deliberately Did Not Build
 
 Every item below was considered — it appears somewhere in `docs/architecture/PART_A` through `PART_D` as target design — and deliberately not built, not forgotten. The test for inclusion here isn't "would this be interesting," it's "what problem does this solve *today*, for the code that actually exists." Where the honest answer was "none yet," the thing stayed out.
 

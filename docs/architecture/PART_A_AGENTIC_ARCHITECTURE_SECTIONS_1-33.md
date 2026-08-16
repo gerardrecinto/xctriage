@@ -962,7 +962,7 @@ change, three hops deep, ranked by path count" - and that pattern shows up
 repeatedly, not hypothetically, then a graph database earns its
 operational cost. Until that's a measured pain point, it's added
 complexity with no measured problem behind it, which is exactly the "what
-we deliberately did not build" instinct this whole document tries to
+I deliberately did not build" instinct this whole document tries to
 apply consistently.
 
 ---
