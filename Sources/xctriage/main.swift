@@ -186,7 +186,13 @@ struct Remediate: AsyncParsableCommand {
     @Flag(name: .long, help: "Skip sandbox build/test validation (faster, but the proposal is unverified)")
     var skipSandbox: Bool = false
 
-    @Flag(name: .long, help: "Open a draft PR (via gh CLI) once policy allows the patch and sandbox validation passes. Never merges; requires --skip-sandbox to be unset.")
+    @Flag(
+        name: .long,
+        help: ArgumentHelp(
+            "Open a draft PR (via gh CLI) once policy allows the patch and sandbox validation passes. "
+                + "Never merges; requires --skip-sandbox to be unset."
+        )
+    )
     var createPR: Bool = false
 
     @Option(name: .long, help: "Base branch to open the draft PR against (used with --create-pr)")
@@ -207,39 +213,7 @@ struct Remediate: AsyncParsableCommand {
             throw TriageError.missingAPIKey
         }
 
-        let failureSites: [FailureSite]
-        let category: FailureCategory
-        let confidence: Double
-
-        if input.hasSuffix(".xcresult") {
-            let parser = XCResultParser()
-            let sites = try await parser.testFailures(bundlePath: input)
-            let entries = sites.map { s in
-                LogEntry(lineNumber: 0, level: .error,
-                         message: "\(s.locationDescription): \(s.errorMessage)", raw: "")
-            }
-            let result = RuleClassifier().classify(entries)
-            failureSites = sites
-            category = result.category
-            confidence = result.confidence
-        } else {
-            let logText: String
-            if input == "-" {
-                logText = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            } else {
-                guard let text = try? String(contentsOfFile: input, encoding: .utf8) else {
-                    throw TriageError.fileNotFound(input)
-                }
-                logText = text
-            }
-            let parser = BuildLogParser()
-            let entries = parser.parse(logText)
-            let context = parser.extractFailureContext(entries)
-            let result = RuleClassifier().classify(context)
-            failureSites = result.failureSites.isEmpty ? parser.extractFailureSites(context) : result.failureSites
-            category = result.category
-            confidence = result.confidence
-        }
+        let (failureSites, category, confidence) = try await Self.classifyFailure(input: input)
 
         guard let site = failureSites.first else {
             print("No failure sites found; nothing to remediate.")
@@ -298,26 +272,15 @@ struct Remediate: AsyncParsableCommand {
             Foundation.exit(4)
         }
 
-        var sandboxLine = "Sandbox:     skipped (--skip-sandbox)"
-        var sandboxResult: SandboxValidator.Result?
-        if !skipSandbox {
-            try await stateMachine.transition(key: fingerprint.value, to: .validating)
-            let result = try await SandboxValidator().validate(
-                proposal: proposal,
-                repoRoot: repoRoot,
-                testFilter: site.testName,
-                timeout: sandboxTimeout
-            )
-            guard result.passed else {
-                print("Sandbox rejected [\(fingerprint.value)]: applied=\(result.applied) build=\(result.buildSucceeded) test=\(result.testSucceeded)")
-                print(result.output)
-                try await stateMachine.transition(key: fingerprint.value, to: .sandboxFailed)
-                Foundation.exit(4)
-            }
-            sandboxResult = result
-            sandboxLine = "Sandbox:     build passed, target test passed"
-            try await stateMachine.transition(key: fingerprint.value, to: .sandboxPassed)
-        }
+        let (sandboxLine, sandboxResult) = try await Self.runSandboxIfNeeded(
+            skipSandbox: skipSandbox,
+            proposal: proposal,
+            repoRoot: repoRoot,
+            testFilter: site.testName,
+            timeout: sandboxTimeout,
+            fingerprint: fingerprint,
+            stateMachine: stateMachine
+        )
 
         let header = """
         Fingerprint: \(fingerprint.value)
@@ -339,26 +302,118 @@ struct Remediate: AsyncParsableCommand {
         // --skip-sandbox, which --create-pr refuses above) sandbox
         // validation passed. This only ever opens a draft PR — see
         // GitHubPRWriter: no merge path exists in this tool.
-        if createPR, let sandboxResult {
-            let writer = GitHubPRWriter()
-            do {
-                let prResult = try await writer.createDraftPR(
-                    proposal: proposal,
-                    fingerprint: fingerprint,
-                    category: category,
-                    failureSite: site,
-                    sandboxResult: sandboxResult,
-                    repoRoot: repoRoot,
-                    baseBranch: baseBranch
-                )
-                let resultDescription = prResult.prURL ?? "(no URL returned by gh) branch=\(prResult.branchName)"
-                try await idempotency.recordProcessed(operation: "create_pr", key: fingerprint.value, result: resultDescription)
-                try await stateMachine.transition(key: fingerprint.value, to: .prOpened)
-                print("Opened draft PR on branch \(prResult.branchName): \(prResult.prURL ?? "(no URL returned by gh)")")
-            } catch {
-                try await stateMachine.transition(key: fingerprint.value, to: .prFailed)
-                throw error
+        try await Self.openDraftPRIfRequested(
+            createPR: createPR,
+            context: RemediationContext(proposal: proposal, fingerprint: fingerprint, category: category, failureSite: site),
+            sandboxResult: sandboxResult,
+            repoRoot: repoRoot,
+            baseBranch: baseBranch,
+            stateMachine: stateMachine,
+            idempotency: idempotency
+        )
+    }
+
+    // MARK: - Helpers (kept out of run() to stay under swiftlint's function_body_length/cyclomatic_complexity limits)
+
+    private static func classifyFailure(
+        input: String
+    ) async throws -> (failureSites: [FailureSite], category: FailureCategory, confidence: Double) {
+        if input.hasSuffix(".xcresult") {
+            let parser = XCResultParser()
+            let sites = try await parser.testFailures(bundlePath: input)
+            let entries = sites.map { s in
+                LogEntry(lineNumber: 0, level: .error,
+                         message: "\(s.locationDescription): \(s.errorMessage)", raw: "")
             }
+            let result = RuleClassifier().classify(entries)
+            return (sites, result.category, result.confidence)
+        }
+
+        let logText: String
+        if input == "-" {
+            logText = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        } else {
+            guard let text = try? String(contentsOfFile: input, encoding: .utf8) else {
+                throw TriageError.fileNotFound(input)
+            }
+            logText = text
+        }
+        let parser = BuildLogParser()
+        let entries = parser.parse(logText)
+        let context = parser.extractFailureContext(entries)
+        let result = RuleClassifier().classify(context)
+        let sites = result.failureSites.isEmpty ? parser.extractFailureSites(context) : result.failureSites
+        return (sites, result.category, result.confidence)
+    }
+
+    private static func runSandboxIfNeeded(
+        skipSandbox: Bool,
+        proposal: PatchProposal,
+        repoRoot: String,
+        testFilter: String?,
+        timeout: Double,
+        fingerprint: FailureFingerprint,
+        stateMachine: RemediationStateMachine
+    ) async throws -> (sandboxLine: String, result: SandboxValidator.Result?) {
+        guard !skipSandbox else {
+            return ("Sandbox:     skipped (--skip-sandbox)", nil)
+        }
+
+        try await stateMachine.transition(key: fingerprint.value, to: .validating)
+        let result = try await SandboxValidator().validate(
+            proposal: proposal,
+            repoRoot: repoRoot,
+            testFilter: testFilter,
+            timeout: timeout
+        )
+        guard result.passed else {
+            print("Sandbox rejected [\(fingerprint.value)]: applied=\(result.applied) build=\(result.buildSucceeded) test=\(result.testSucceeded)")
+            print(result.output)
+            try await stateMachine.transition(key: fingerprint.value, to: .sandboxFailed)
+            Foundation.exit(4)
+        }
+        try await stateMachine.transition(key: fingerprint.value, to: .sandboxPassed)
+        return ("Sandbox:     build passed, target test passed", result)
+    }
+
+    // Bundles the pieces GitHubPRWriter needs so openDraftPRIfRequested stays
+    // under swiftlint's function_parameter_count error threshold.
+    private struct RemediationContext {
+        let proposal: PatchProposal
+        let fingerprint: FailureFingerprint
+        let category: FailureCategory
+        let failureSite: FailureSite
+    }
+
+    private static func openDraftPRIfRequested(
+        createPR: Bool,
+        context: RemediationContext,
+        sandboxResult: SandboxValidator.Result?,
+        repoRoot: String,
+        baseBranch: String,
+        stateMachine: RemediationStateMachine,
+        idempotency: IdempotencyStore
+    ) async throws {
+        guard createPR, let sandboxResult else { return }
+
+        let writer = GitHubPRWriter()
+        do {
+            let prResult = try await writer.createDraftPR(
+                proposal: context.proposal,
+                fingerprint: context.fingerprint,
+                category: context.category,
+                failureSite: context.failureSite,
+                sandboxResult: sandboxResult,
+                repoRoot: repoRoot,
+                baseBranch: baseBranch
+            )
+            let resultDescription = prResult.prURL ?? "(no URL returned by gh) branch=\(prResult.branchName)"
+            try await idempotency.recordProcessed(operation: "create_pr", key: context.fingerprint.value, result: resultDescription)
+            try await stateMachine.transition(key: context.fingerprint.value, to: .prOpened)
+            print("Opened draft PR on branch \(prResult.branchName): \(prResult.prURL ?? "(no URL returned by gh)")")
+        } catch {
+            try await stateMachine.transition(key: context.fingerprint.value, to: .prFailed)
+            throw error
         }
     }
 }
