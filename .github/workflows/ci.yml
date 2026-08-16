@@ -60,6 +60,16 @@ jobs:
 
   test:
     runs-on: ${{ vars.MACOS_RUNNER || 'macos-15' }}
+    # Job-level override (top-level default is contents: read) so the
+    # Auto-Remediate PR step can push a remediation branch and open a draft
+    # PR via `gh`. On a fork's pull_request run GITHUB_TOKEN stays read-only
+    # regardless of what's declared here (GitHub security default) - that
+    # step's continue-on-error already tolerates that failure the same way
+    # it tolerates a policy rejection.
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
     strategy:
       matrix:
         xcode: ${{ fromJSON(vars.XCODE_VERSIONS || '["16.3"]') }}
@@ -136,23 +146,40 @@ jobs:
       # `xctriage remediate` fingerprints the failure, re-runs it through the
       # same policy gate, asks Claude for a single-file diff, and proves it
       # by building and testing inside an isolated git worktree before this
-      # step ever sees output. continue-on-error because a non-zero exit
-      # here means policy or the sandbox rejected the proposal (wrong
-      # category, too many files touched, forbidden path, build/test still
-      # red) — that's the gate working, not a workflow failure, so the job
-      # still falls through to the Slack notification either way.
-      - name: "Auto-Remediate: propose sandboxed patch (compilation_error)"
+      # step ever sees output. When it also passes sandbox validation this
+      # opens a draft PR (GitHubPRWriter, never auto-merged - a human still
+      # has to approve it). --create-pr is left off entirely on a fork's
+      # pull_request run, where GITHUB_TOKEN can't push to this repo anyway;
+      # skipping it there avoids a guaranteed-to-fail push instead of just
+      # tolerating it. continue-on-error because a non-zero exit here means
+      # policy or the sandbox rejected the proposal (wrong category, too
+      # many files touched, forbidden path, build/test still red) - that's
+      # the gate working, not a workflow failure, so the job still falls
+      # through to the Slack notification either way.
+      - name: "Auto-Remediate: propose sandboxed patch, open draft PR (compilation_error)"
         id: propose_patch
         if: >
           steps.test.outcome == 'failure' &&
           steps.retry.outcome != 'success' &&
           steps.classify.outputs.category == 'compilation_error'
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          CREATE_PR_FLAG=""
+          if [ "${{ github.event_name }}" != "pull_request" ] || \
+             [ "${{ github.event.pull_request.head.repo.full_name }}" == "${{ github.repository }}" ]; then
+            CREATE_PR_FLAG="--create-pr"
+          fi
+
           "$XCTRIAGE_BIN" remediate "$TEST_LOG" \
             --source "$CI_SOURCE" \
             --repo-root . \
-            --out "$REMEDIATION_DIFF"
+            --out "$REMEDIATION_DIFF" \
+            $CREATE_PR_FLAG
 
       - name: Upload remediation proposal
         if: steps.propose_patch.outcome == 'success'
