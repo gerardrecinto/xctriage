@@ -24,6 +24,8 @@ public struct RemediationPolicy: Sendable {
         forbiddenPathPrefixes: [String] = [
             "Sources/XCTriageKit/Classifiers/",
             "Sources/XCTriageKit/Policy/",
+            "Sources/XCTriageKit/Remediation/",
+            "Sources/xctriage/",
             ".github/",
             "Package.swift",
             "Jenkinsfile",

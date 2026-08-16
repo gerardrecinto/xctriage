@@ -73,6 +73,28 @@ final class RemediationPolicyTests: XCTestCase {
         guard case .denied = decision else { return XCTFail("expected denied, got \(decision)") }
     }
 
+    // The Classifiers/ and Policy/ directories were already forbidden, but the
+    // remediation pipeline itself (PatchGenerator, SandboxValidator,
+    // GitHubPRWriter, RemediationStateMachine, IdempotencyStore) was not —
+    // meaning a compilation_error in one of those files could have produced
+    // a PR that patches the tool's own safety machinery. Same "can't rewrite
+    // its own safety rails" instinct as the existing forbidden paths.
+    func test_isPatchAllowed_deniesRemediationPipelinePath() {
+        let policy = RemediationPolicy()
+        let decision = policy.isPatchAllowed(filesChanged: ["Sources/XCTriageKit/Remediation/SandboxValidator.swift"])
+        guard case .denied(let reason) = decision else { return XCTFail("expected denied") }
+        XCTAssertTrue(reason.contains("forbidden"))
+    }
+
+    // The CLI entrypoint wires the policy gate, the state machine, and the
+    // idempotency store together — a self-patch there could alter how those
+    // gates are invoked without ever touching a "forbidden" file by name.
+    func test_isPatchAllowed_deniesCLIEntrypointPath() {
+        let policy = RemediationPolicy()
+        let decision = policy.isPatchAllowed(filesChanged: ["Sources/xctriage/main.swift"])
+        guard case .denied = decision else { return XCTFail("expected denied, got \(decision)") }
+    }
+
     func test_customPolicy_respectsOverriddenThresholds() {
         let policy = RemediationPolicy(minConfidence: 0.95, maxFilesChanged: 3, maxAttempts: 2)
         XCTAssertEqual(policy.isEligibleForRemediation(category: .flakyTest, confidence: 0.90, attemptNumber: 1), .denied(reason: "confidence 0.9 below minimum 0.95"))
