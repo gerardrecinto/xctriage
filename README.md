@@ -236,6 +236,12 @@ It's written as a proposal, not a changelog. Every claim in it is tagged `(MEASU
 - [Architecture Decision Records](docs/adr/) — 8 ADRs on the parts that are real, each with alternatives and why they were rejected
 - [Runbooks](docs/runbooks/) — 5 operational runbooks for real failure modes, including the one that found and fixed an actual bug in `SandboxValidator`
 
+Three diagrams, drawn straight from the real code (not the target design):
+
+<img src="docs/assets/remediation-state-machine.svg" alt="Remediation state machine: patchProposed to validating to sandboxPassed/sandboxFailed to prOpened/prFailed/policyRejected" width="49%"> <img src="docs/assets/security-boundaries.svg" alt="Trust boundaries: untrusted input, LLM proposal, deterministic policy gate, sandbox, draft PR, human approval" width="49%">
+
+<img src="docs/assets/ci-pipeline.svg" alt="xctriage's own CI pipeline, read from .github/workflows/ci.yml" width="98%">
+
 ---
 
 ## Install
