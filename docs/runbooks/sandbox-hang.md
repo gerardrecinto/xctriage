@@ -11,46 +11,46 @@ draining logic itself has a bug.
 
 ## How do I know?
 
-`xctriage remediate ... ` (with sandbox validation enabled, i.e. no
-`--skip-sandbox`) simply never returns. There is no timeout wrapped around
-`SandboxValidator.validate`'s `run(...)` calls today — this is a real,
-current gap, not a hypothetical one.
+Since the fix described below, this no longer means "the CLI hangs
+forever." A hung step now surfaces as `SandboxValidator.validate` throwing
+`TriageError.sandboxTimedOut(command:seconds:)` once the configured
+timeout (`--sandbox-timeout`, default 300s per shell-out) elapses.
+`Remediate.run()` doesn't catch this specially, so it propagates as a
+normal thrown error and the process exits non-zero with that error
+description naming the exact command that hung.
 
 ## What is the blast radius?
 
-One stuck CLI process. If this runs inside CI, it consumes a CI runner
-until the job-level timeout (not an xctriage-level one) kills it. No
-partial state is at risk: the worktree is disposable and the real
-`repoRoot` was never touched (ADR-004), and no `RemediationStateMachine`
-transition or `IdempotencyStore` record happens until `validate` actually
-returns, so a killed process leaves no half-written state to clean up.
+One CLI invocation, bounded now to roughly `timeout` seconds instead of
+unbounded. No partial state is at risk: the worktree is disposable and the
+real `repoRoot` was never touched (ADR-004), and no
+`RemediationStateMachine` transition or `IdempotencyStore` record happens
+until `validate` actually returns successfully, so a timed-out attempt
+leaves no half-written state to clean up.
 
 ## What should happen automatically?
 
-Nothing today. This is the most concrete example in this codebase of a
-gap `docs/architecture/PART_B` section 44 (quantified NFRs) argues for in
-principle — sandbox validation has no stated timeout target, let alone an
-enforced one.
+`run(_:_:cwd:timeout:)` in `SandboxValidator.swift` races the subprocess
+against a `Task.sleep` deadline in a `withThrowingTaskGroup`; if the
+deadline wins, it calls `process.terminate()` (via the
+`SandboxProcessHandle` wrapper) to actually kill the hung child process,
+not just abandon waiting for it. `test_validate_timesOutRatherThanHangingForever`
+in `SandboxValidatorTests` asserts this against a fake tool that sleeps 30s
+with a 0.3s configured timeout, and passes in well under a second — proof
+the process is actually killed, not just that the error type matches.
 
 ## What must a human do?
 
-Kill the CI job (or the local process) manually. Investigate whether the
-specific test the patch targets is one that can hang under normal
-conditions (a genuinely flaky/hanging test would itself be a
-`flakyTest`-category candidate, which is an odd, worth-noting edge case:
-remediation for a hang-prone test could itself hang during validation).
+Investigate whether the specific test the patch targets is one that can
+hang under normal conditions (a genuinely flaky/hanging test would itself
+be a `flakyTest`-category candidate, which is an odd, worth-noting edge
+case: remediation for a hang-prone test could itself hit the sandbox
+timeout during validation). If a repository's build/test legitimately
+needs longer than the default 300s per step, pass a larger
+`--sandbox-timeout`.
 
 ## How do I verify recovery?
 
-Re-run with a wall-clock limit wrapped around the invocation
-(`timeout 300 xctriage remediate ...` at the CI-job level today, since
-`SandboxValidator` has no internal timeout) and confirm it returns a
-pass/fail `Result` rather than hanging again.
-
-## Note
-
-This is a real, open gap, not a solved problem being documented after the
-fact — flagged here specifically so it doesn't quietly stay invisible.
-Adding a timeout to `SandboxValidator.validate` (wrap `Process` execution
-with a `Task` that races a `Task.sleep` deadline) is a reasonable next
-feature; it hasn't been implemented yet as of this writing.
+Re-run `xctriage remediate ... --sandbox-timeout <N>` and confirm it
+returns a `sandboxTimedOut` error (or a normal pass/fail `Result`) within
+roughly `N` seconds rather than hanging indefinitely.

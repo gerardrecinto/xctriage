@@ -68,4 +68,5 @@ public enum TriageError: Error, Sendable {
     case slackWebhookFailed(Int, String)
     case missingAPIKey
     case remediationCommandFailed(String, String)
+    case sandboxTimedOut(command: String, seconds: TimeInterval)
 }

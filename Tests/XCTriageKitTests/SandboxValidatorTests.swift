@@ -90,4 +90,50 @@ final class SandboxValidatorTests: XCTestCase {
         XCTAssertTrue(result.buildSucceeded)
         XCTAssertFalse(result.testSucceeded)
     }
+
+    // Stands in for a hung `swift build`/`swift test`: sleeps far longer than
+    // the timeout under test, so a passing test proves validate() actually
+    // gave up early rather than just happening to finish fast.
+    private func makeHangingTool(hangingOn command: String, sleepSeconds: Int = 30) throws -> String {
+        let path = NSTemporaryDirectory() + "hanging-tool-\(UUID().uuidString).sh"
+        let script = """
+        #!/bin/sh
+        case "$1" in
+          \(command)) sleep \(sleepSeconds); exit 0 ;;
+          *) exit 0 ;;
+        esac
+        """
+        try script.write(toFile: path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+        return path
+    }
+
+    func test_validate_timesOutRatherThanHangingForever() async throws {
+        let git = try makeFakeTool(exitCodes: ["worktree": 0, "apply": 0, "remove": 0])
+        let swift = try makeHangingTool(hangingOn: "build")
+        let validator = SandboxValidator(gitPath: git, swiftPath: swift)
+
+        let start = Date()
+        do {
+            _ = try await validator.validate(proposal: proposal(), repoRoot: NSTemporaryDirectory(), timeout: 0.3)
+            XCTFail("expected validate() to throw sandboxTimedOut")
+        } catch TriageError.sandboxTimedOut(let command, let seconds) {
+            XCTAssertTrue(command.contains("build"))
+            XCTAssertEqual(seconds, 0.3)
+        }
+        // The fake tool sleeps 30s; a passing elapsed-time assertion well
+        // under that proves the hung process was actually killed, not just
+        // that the error type happened to match.
+        XCTAssertLessThan(Date().timeIntervalSince(start), 10)
+    }
+
+    func test_validate_doesNotTimeOutWhenWithinBudget() async throws {
+        let git = try makeFakeTool(exitCodes: ["worktree": 0, "apply": 0, "remove": 0])
+        let swift = try makeFakeTool(exitCodes: ["build": 0, "test": 0])
+        let validator = SandboxValidator(gitPath: git, swiftPath: swift)
+
+        let result = try await validator.validate(proposal: proposal(), repoRoot: NSTemporaryDirectory(), timeout: 30)
+
+        XCTAssertTrue(result.passed)
+    }
 }

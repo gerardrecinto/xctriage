@@ -198,6 +198,9 @@ struct Remediate: AsyncParsableCommand {
     @Option(name: .long, help: "Idempotency store DB path (dedups retried --create-pr triggers)")
     var idempotencyDB: String = "~/.xctriage/idempotency.db"
 
+    @Option(name: .long, help: "Seconds to allow each sandbox step (worktree/apply/build/test) before killing it and failing validation")
+    var sandboxTimeout: Double = 300
+
     mutating func run() async throws {
         let apiKey = ProcessInfo.processInfo.environment["XCTRIAGE_ANTHROPIC_API_KEY"] ?? ""
         guard !apiKey.isEmpty else {
@@ -302,7 +305,8 @@ struct Remediate: AsyncParsableCommand {
             let result = try await SandboxValidator().validate(
                 proposal: proposal,
                 repoRoot: repoRoot,
-                testFilter: site.testName
+                testFilter: site.testName,
+                timeout: sandboxTimeout
             )
             guard result.passed else {
                 print("Sandbox rejected [\(fingerprint.value)]: applied=\(result.applied) build=\(result.buildSucceeded) test=\(result.testSucceeded)")
