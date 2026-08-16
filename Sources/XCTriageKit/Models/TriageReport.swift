@@ -67,4 +67,5 @@ public enum TriageError: Error, Sendable {
     case claudeAPIError(Int, String)
     case slackWebhookFailed(Int, String)
     case missingAPIKey
+    case remediationCommandFailed(String, String)
 }
