@@ -376,6 +376,12 @@ struct Flaky: AsyncParsableCommand {
     @Option(name: .long, help: "Flaky test DB path")
     var db: String = "~/.xctriage/flaky.db"
 
+    @Flag(name: .long, help: "Also list tests over the quarantine score threshold, separately from the top-N list")
+    var showQuarantineCandidates: Bool = false
+
+    @Option(name: .long, help: "Score threshold (exclusive) for --show-quarantine-candidates")
+    var quarantineThreshold: Double = 0.70
+
     mutating func run() async throws {
         let tracker = try FlakyTestTracker(dbPath: db)
         let top = try await tracker.topFlaky(n: n)
@@ -390,5 +396,18 @@ struct Flaky: AsyncParsableCommand {
             print("  \(FlakyBarFormatter.row(name: name, score: score))")
         }
         print()
+
+        if showQuarantineCandidates {
+            let candidates = try await tracker.quarantineCandidates(threshold: quarantineThreshold)
+            if candidates.isEmpty {
+                print("  No tests above the \(String(format: "%.2f", quarantineThreshold)) quarantine threshold.\n")
+            } else {
+                print("  Quarantine candidates (score > \(String(format: "%.2f", quarantineThreshold)))\n")
+                for (name, score) in candidates {
+                    print("  \(FlakyBarFormatter.row(name: name, score: score))")
+                }
+                print()
+            }
+        }
     }
 }

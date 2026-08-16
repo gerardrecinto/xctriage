@@ -66,6 +66,53 @@ final class FlakyTestTrackerTests: XCTestCase {
         XCTAssertTrue(top.isEmpty)
     }
 
+    func test_quarantineCandidates_returnsOnlyTestsAboveThreshold() async throws {
+        let tracker = try FlakyTestTracker(dbPath: dbPath)
+        // 3 distinct builds; test_alwaysFails fails in all 3 (score 1.0),
+        // test_sometimesFails fails in 1 of 3 (score 0.33) — below the
+        // default 0.70 quarantine threshold from the comment in
+        // FlakyTestTracker.swift ("Score > 0.70 -> quarantine candidate").
+        for buildID in ["b1", "b2", "b3"] {
+            try await tracker.record(testName: "Suite.test_alwaysFails", buildID: buildID, source: "xcodebuild")
+        }
+        try await tracker.record(testName: "Suite.test_sometimesFails", buildID: "b1", source: "xcodebuild")
+
+        let candidates = try await tracker.quarantineCandidates()
+        XCTAssertEqual(candidates.map(\.name), ["Suite.test_alwaysFails"])
+    }
+
+    func test_quarantineCandidates_respectsCustomThreshold() async throws {
+        let tracker = try FlakyTestTracker(dbPath: dbPath)
+        for buildID in ["b1", "b2", "b3"] {
+            try await tracker.record(testName: "Suite.test_alwaysFails", buildID: buildID, source: "xcodebuild")
+        }
+        try await tracker.record(testName: "Suite.test_sometimesFails", buildID: "b1", source: "xcodebuild")
+
+        // 0.33 clears a threshold of 0.30, so both tests should qualify now.
+        let candidates = try await tracker.quarantineCandidates(threshold: 0.30)
+        XCTAssertEqual(Set(candidates.map(\.name)), ["Suite.test_alwaysFails", "Suite.test_sometimesFails"])
+    }
+
+    func test_quarantineCandidates_emptyHistoryReturnsEmpty() async throws {
+        let tracker = try FlakyTestTracker(dbPath: dbPath)
+        let candidates = try await tracker.quarantineCandidates()
+        XCTAssertTrue(candidates.isEmpty)
+    }
+
+    func test_quarantineCandidates_exactlyAtThresholdIsNotIncluded() async throws {
+        // "> 0.70", not ">=" — per the documented comment, a test scoring
+        // exactly at the threshold is not yet a quarantine candidate.
+        let tracker = try FlakyTestTracker(dbPath: dbPath)
+        try await tracker.record(testName: "Suite.test_exactlyHalf", buildID: "b1", source: "xcodebuild")
+        // Registers b2 as a second distinct build without adding another
+        // failure for test_exactlyHalf, so its score lands at exactly
+        // 1 failure / 2 builds = 0.5.
+        try await tracker.record(testName: "Suite.other", buildID: "b2", source: "xcodebuild")
+
+        let candidates = try await tracker.quarantineCandidates(threshold: 0.5)
+        XCTAssertTrue(candidates.isEmpty)
+    }
+
     func test_scores_capsAtOneEvenWithMoreFailuresThanBuilds() async throws {
         // A test can only fail once per recorded build in normal usage, but the
         // score formula divides by distinct build_id count, so guard against

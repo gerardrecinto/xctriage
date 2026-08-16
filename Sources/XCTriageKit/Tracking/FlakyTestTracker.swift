@@ -78,6 +78,15 @@ public actor FlakyTestTracker {
         )
     }
 
+    // Tests whose failure ratio strictly exceeds `threshold` over the tracking
+    // window — the decision this type's header comment has promised since it
+    // was written ("Score > 0.70 -> quarantine candidate") but that nothing
+    // previously computed. Strictly-greater, not >=: a test sitting exactly
+    // at the threshold hasn't crossed it yet.
+    public func quarantineCandidates(threshold: Double = 0.70, limit: Int = 50) throws -> [(name: String, score: Double)] {
+        try topFlaky(n: limit).filter { $0.score > threshold }
+    }
+
     public func topFlaky(n: Int = 10) throws -> [(name: String, score: Double)] {
         let cutoff = cutoffDate()
         let sql = """
