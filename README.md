@@ -232,6 +232,9 @@ It's written as a proposal, not a changelog. Every claim in it is tagged `(MEASU
 - [Part B — Continuous Deployment & DevOps System Design](docs/architecture/PART_B_DEVOPS_SYSTEM_DESIGN_SECTIONS_34-114.md)
 - [Part C — Privacy, Security & Reliability](docs/architecture/PART_C_PRIVACY_SECURITY_PHILOSOPHY_SECTIONS_115-210.md)
 - [Part D — Product, Operations & Final Review](docs/architecture/PART_D_PRODUCT_OPERATIONS_SECTIONS_211-307.md)
+- [What We Deliberately Did Not Build](docs/architecture/WHAT_WE_DID_NOT_BUILD.md) — Kubernetes, GitOps, Kafka, Terraform, Postgres, and more: what's out of scope today and why
+- [Architecture Decision Records](docs/adr/) — 8 ADRs on the parts that are real, each with alternatives and why they were rejected
+- [Runbooks](docs/runbooks/) — 5 operational runbooks for real failure modes, including the one that found and fixed an actual bug in `SandboxValidator`
 
 ---
 
