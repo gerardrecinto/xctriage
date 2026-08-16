@@ -192,6 +192,12 @@ struct Remediate: AsyncParsableCommand {
     @Option(name: .long, help: "Base branch to open the draft PR against (used with --create-pr)")
     var baseBranch: String = "main"
 
+    @Option(name: .long, help: "Durable remediation state machine DB path")
+    var stateDB: String = "~/.xctriage/remediation_state.db"
+
+    @Option(name: .long, help: "Idempotency store DB path (dedups retried --create-pr triggers)")
+    var idempotencyDB: String = "~/.xctriage/idempotency.db"
+
     mutating func run() async throws {
         let apiKey = ProcessInfo.processInfo.environment["XCTRIAGE_ANTHROPIC_API_KEY"] ?? ""
         guard !apiKey.isEmpty else {
@@ -239,12 +245,25 @@ struct Remediate: AsyncParsableCommand {
 
         let fingerprint = FailureFingerprint(category: category, failureSites: failureSites)
         let policy = RemediationPolicy()
+        let stateMachine = try RemediationStateMachine(dbPath: stateDB)
+        let idempotency = try IdempotencyStore(dbPath: idempotencyDB)
+
+        // Dedup first, before spending any LLM tokens or sandbox time: if a
+        // prior run (or a retried CI trigger for the same failure) already
+        // opened a PR for this fingerprint, reuse that result instead of
+        // generating and validating a second patch for a PR that already
+        // exists. See docs/architecture PART_B section 43.
+        if createPR, let existingPR = try await idempotency.existingResult(operation: "create_pr", key: fingerprint.value) {
+            print("PR already opened for fingerprint [\(fingerprint.value)]: \(existingPR)")
+            return
+        }
 
         let eligibility = policy.isEligibleForRemediation(category: category, confidence: confidence, attemptNumber: attempt)
         guard case .allowed = eligibility else {
             if case .denied(let reason) = eligibility {
                 print("Remediation blocked [\(fingerprint.value)]: \(reason)")
             }
+            try await stateMachine.transition(key: fingerprint.value, to: .policyRejected)
             Foundation.exit(4)
         }
 
@@ -260,12 +279,14 @@ struct Remediate: AsyncParsableCommand {
 
         let generator = PatchGenerator(apiKey: apiKey)
         let proposal = try await generator.proposePatch(category: category, failureSite: site, fileContents: fileContents)
+        try await stateMachine.transition(key: fingerprint.value, to: .patchProposed)
 
         let patchDecision = policy.isPatchAllowed(filesChanged: [proposal.filePath])
         guard case .allowed = patchDecision else {
             if case .denied(let reason) = patchDecision {
                 print("Patch blocked [\(fingerprint.value)]: \(reason)")
             }
+            try await stateMachine.transition(key: fingerprint.value, to: .policyRejected)
             Foundation.exit(4)
         }
 
@@ -277,6 +298,7 @@ struct Remediate: AsyncParsableCommand {
         var sandboxLine = "Sandbox:     skipped (--skip-sandbox)"
         var sandboxResult: SandboxValidator.Result?
         if !skipSandbox {
+            try await stateMachine.transition(key: fingerprint.value, to: .validating)
             let result = try await SandboxValidator().validate(
                 proposal: proposal,
                 repoRoot: repoRoot,
@@ -285,10 +307,12 @@ struct Remediate: AsyncParsableCommand {
             guard result.passed else {
                 print("Sandbox rejected [\(fingerprint.value)]: applied=\(result.applied) build=\(result.buildSucceeded) test=\(result.testSucceeded)")
                 print(result.output)
+                try await stateMachine.transition(key: fingerprint.value, to: .sandboxFailed)
                 Foundation.exit(4)
             }
             sandboxResult = result
             sandboxLine = "Sandbox:     build passed, target test passed"
+            try await stateMachine.transition(key: fingerprint.value, to: .sandboxPassed)
         }
 
         let header = """
@@ -313,16 +337,24 @@ struct Remediate: AsyncParsableCommand {
         // GitHubPRWriter: no merge path exists in this tool.
         if createPR, let sandboxResult {
             let writer = GitHubPRWriter()
-            let prResult = try await writer.createDraftPR(
-                proposal: proposal,
-                fingerprint: fingerprint,
-                category: category,
-                failureSite: site,
-                sandboxResult: sandboxResult,
-                repoRoot: repoRoot,
-                baseBranch: baseBranch
-            )
-            print("Opened draft PR on branch \(prResult.branchName): \(prResult.prURL ?? "(no URL returned by gh)")")
+            do {
+                let prResult = try await writer.createDraftPR(
+                    proposal: proposal,
+                    fingerprint: fingerprint,
+                    category: category,
+                    failureSite: site,
+                    sandboxResult: sandboxResult,
+                    repoRoot: repoRoot,
+                    baseBranch: baseBranch
+                )
+                let resultDescription = prResult.prURL ?? "(no URL returned by gh) branch=\(prResult.branchName)"
+                try await idempotency.recordProcessed(operation: "create_pr", key: fingerprint.value, result: resultDescription)
+                try await stateMachine.transition(key: fingerprint.value, to: .prOpened)
+                print("Opened draft PR on branch \(prResult.branchName): \(prResult.prURL ?? "(no URL returned by gh)")")
+            } catch {
+                try await stateMachine.transition(key: fingerprint.value, to: .prFailed)
+                throw error
+            }
         }
     }
 }
