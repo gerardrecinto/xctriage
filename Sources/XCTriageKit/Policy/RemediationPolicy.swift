@@ -61,7 +61,13 @@ public struct RemediationPolicy: Sendable {
             return .denied(reason: "patch changes \(filesChanged.count) files, exceeds max \(maxFilesChanged)")
         }
         for path in filesChanged {
-            if let forbidden = forbiddenPathPrefixes.first(where: { path.hasPrefix($0) || path == $0 }) {
+            // Case-insensitive: PatchProposal.filePath is echoed back by the
+            // LLM from its own JSON response, not guaranteed to preserve the
+            // exact on-disk casing, and macOS's default filesystem (APFS) is
+            // case-insensitive-but-preserving, so "sources/..." and
+            // "Sources/..." are the same file on disk either way.
+            let lowerPath = path.lowercased()
+            if let forbidden = forbiddenPathPrefixes.first(where: { lowerPath.hasPrefix($0.lowercased()) || lowerPath == $0.lowercased() }) {
                 return .denied(reason: "path \(path) is forbidden (\(forbidden))")
             }
         }

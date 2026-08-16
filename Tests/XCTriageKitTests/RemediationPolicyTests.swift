@@ -73,6 +73,25 @@ final class RemediationPolicyTests: XCTestCase {
         guard case .denied = decision else { return XCTFail("expected denied, got \(decision)") }
     }
 
+    // PatchProposal.filePath comes straight from the LLM's own JSON ("echo
+    // back the path you were given"), so its casing isn't guaranteed to
+    // exactly match the on-disk path. macOS's default filesystem (APFS) is
+    // case-insensitive-but-preserving, so "sources/xctriage/main.swift" and
+    // "Sources/xctriage/main.swift" are the SAME file on disk, but
+    // String.hasPrefix is case-sensitive — a differently-cased path used to
+    // sail past this safety-rail check entirely.
+    func test_isPatchAllowed_deniesForbiddenPathRegardlessOfCase() {
+        let policy = RemediationPolicy()
+        let decision = policy.isPatchAllowed(filesChanged: ["sources/xctriage/main.swift"])
+        guard case .denied = decision else { return XCTFail("expected denied, got \(decision)") }
+    }
+
+    func test_isPatchAllowed_deniesPackageManifestRegardlessOfCase() {
+        let policy = RemediationPolicy()
+        let decision = policy.isPatchAllowed(filesChanged: ["package.swift"])
+        guard case .denied = decision else { return XCTFail("expected denied, got \(decision)") }
+    }
+
     // The Classifiers/ and Policy/ directories were already forbidden, but the
     // remediation pipeline itself (PatchGenerator, SandboxValidator,
     // GitHubPRWriter, RemediationStateMachine, IdempotencyStore) was not —
