@@ -1260,7 +1260,7 @@ xctriage/                    (MEASURED: this is the real repo layout)
 │   ├── Tracking/                 FlakyTestTracker
 │   └── Reporters/                 Terminal/JSON/Slack
 ├── Sources/xctriage/            CLI: analyze, flaky, remediate subcommands
-└── Tests/XCTriageKitTests/       76 tests, MEASURED
+└── Tests/XCTriageKitTests/       104 tests, MEASURED
 
 orchestrator/                  TARGET, does not exist - would be a
                                 separate service/language, per Section 32

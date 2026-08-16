@@ -11,7 +11,7 @@ its own: `xctriage` is a Swift 6 CLI (`analyze`, `flaky`, `remediate`
 subcommands via swift-argument-parser), file/SQLite-based, no server, no
 event bus, no Postgres. `remediate` runs a real two-gate policy
 (`RemediationPolicy`) and a real sandbox (`SandboxValidator`: ephemeral `git
-worktree`, actual `swift build` + `swift test`). 76 tests pass today
+worktree`, actual `swift build` + `swift test`). 104 tests pass today
 **(MEASURED)**. Everything else below (exit-code taxonomy, deterministic
 replay, event sourcing, Postgres schemas, build fleets, dashboards) is a
 **(TARGET)** design proposal written to survive a Staff-level follow-up, not
@@ -661,7 +661,7 @@ more than xctriage flags a test as flaky off one failure.
 ## 271. Benchmark Integrity
 
 **(MEASURED, honest)** The only performance numbers stated anywhere in this
-document set are the ones explicitly measured this session (76 tests, ~2
+document set are the ones explicitly measured this session (104 tests, ~2
 second full suite run, sub-millisecond rule classification per the README's
 own example), no cherry-picked best case, no warm-vs-cold-cache
 distinction claimed because it hasn't been measured. Any future benchmark

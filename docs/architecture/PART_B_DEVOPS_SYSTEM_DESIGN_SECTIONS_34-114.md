@@ -1,7 +1,7 @@
 # Target Architecture - Part B (Sections 34-114)
 ## Continuous deployment, system-design depth, observability, and documentation strategy for xctriage at platform scale.
 
-This is a target-architecture design-review document, not a description of what xctriage currently runs. The real repo is a Swift 6 CLI: `BuildLogParser`/`XCResultParser` for input, a 17-rule `RuleClassifier` across 7 categories, a `ClaudeClassifier` fallback below 0.60 confidence, `FailureFingerprint` (SHA256, 16 hex chars), a two-gate `RemediationPolicy`, a `PatchGenerator` that proposes a single-file diff and never applies it, a `SandboxValidator` that builds and tests that diff inside an ephemeral `git worktree`, and a `remediate` CLI subcommand wiring all of it together. 76 tests pass (MEASURED). There is no event bus, no Kubernetes, no GitOps controller, no multi-region deployment, no Grafana instance, and no chaos-engineering rig actually running today. Every number below is tagged **(MEASURED)** when it comes from the real repo or **(TARGET)** when it's a proposed design goal with no production evidence behind it yet. This continues from Part A (sections 1-33, the agentic pipeline / MCP / agent-architecture half of the same design review) in this directory.
+This is a target-architecture design-review document, not a description of what xctriage currently runs. The real repo is a Swift 6 CLI: `BuildLogParser`/`XCResultParser` for input, a 17-rule `RuleClassifier` across 7 categories, a `ClaudeClassifier` fallback below 0.60 confidence, `FailureFingerprint` (SHA256, 16 hex chars), a two-gate `RemediationPolicy`, a `PatchGenerator` that proposes a single-file diff and never applies it, a `SandboxValidator` that builds and tests that diff inside an ephemeral `git worktree`, and a `remediate` CLI subcommand wiring all of it together. 104 tests pass (MEASURED). There is no event bus, no Kubernetes, no GitOps controller, no multi-region deployment, no Grafana instance, and no chaos-engineering rig actually running today. Every number below is tagged **(MEASURED)** when it comes from the real repo or **(TARGET)** when it's a proposed design goal with no production evidence behind it yet. This continues from Part A (sections 1-33, the agentic pipeline / MCP / agent-architecture half of the same design review) in this directory.
 
 The throughline across all 81 sections below: the two deterministic gates that already exist in the real code (`RemediationPolicy.isEligibleForRemediation`, `RemediationPolicy.isPatchAllowed`) and the real sandbox (`SandboxValidator`) do not change shape as this system grows. Continuous deployment, canaries, and rollback are the same idea one layer up: the LLM proposes a change, and everything that decides whether that change is safe to exist, safe to build, and safe to run in production is deterministic code you can unit test. Autonomy grows by adding more deterministic gates downstream of the model, never by trusting the model more.
 
@@ -69,8 +69,8 @@ failure branches: PATCH_REJECTED, VALIDATION_FAILED, SECURITY_POLICY_BLOCKED,
 |---|---|---|
 | 0 | Investigates only | -- |
 | 1 | Suggests a patch | MEASURED: `PatchGenerator.proposePatch` |
-| 2 | Opens a draft PR | not built (flagged as the remaining piece in Part A of the project Q&A) |
-| 3 | PR can merge after human approval | not built |
+| 2 | Opens a draft PR | MEASURED: `GitHubPRWriter.createDraftPR`, wired into `xctriage remediate --create-pr` and into this repo's own CI for `compilation_error` failures. Always `--draft`; see ADR-003. |
+| 3 | PR can merge after human approval | not built - and by design, per ADR-003 there is no code path in this repo that can merge a PR at all, not even behind a flag |
 | 4 | Auto-deploys fixes to dev | not built |
 | 5 | Auto-deploys fixes to staging | not built |
 | 6 | Auto-begins production canary | not built |
@@ -162,7 +162,7 @@ PagerDuty incident               -> dedup_key = fingerprint
 | End-to-end automated triage | < 3 min |
 | Critical incident alert | < 60s after classification |
 
-(MEASURED, for contrast, real numbers from this session: `swift build` ~1-2s incremental, full `swift test` suite ~1.6-2s for 76 tests, single `SandboxValidator` fake-tool test run 0.1-0.4s each - none of these are the target production numbers above; they're local dev-loop numbers on one machine.)
+(MEASURED, for contrast, real numbers from this session: `swift build` ~1-2s incremental, full `swift test` suite ~1.6-2s for 104 tests, single `SandboxValidator` fake-tool test run 0.1-0.4s each - none of these are the target production numbers above; they're local dev-loop numbers on one machine.)
 
 ## 45. Availability Tiers
 
@@ -457,33 +457,43 @@ That last clause is the one unique to an AI-remediation deploy specifically: a c
 
 ## 68. Incident Runbooks
 
-**(TARGET)** Proposed `docs/runbooks/` directory, each following the same five-question structure: what happened, how do I know, what's the blast radius, what happens automatically, what does a human do, how do I verify recovery.
+**(MEASURED)** `docs/runbooks/` exists with five runbooks, each following the same five-question structure: what happened, how do I know, what's the blast radius, what happens automatically, what does a human do, how do I verify recovery. All five document real failure modes of the actual code, not proposed future ones:
 
 ```
 docs/runbooks/
-  llm-provider-outage.md
-  github-rate-limit.md
-  duplicate-pr.md
-  stuck-deployment.md
-  remediation-false-positive.md
-  kill-switch.md
+  github-rate-limit.md        gh CLI hitting GitHub's rate limit during --create-pr
+  llm-provider-outage.md      api.anthropic.com unreachable (PatchGenerator/ClaudeClassifier)
+  duplicate-pr.md             what to check if IdempotencyStore's guarantee appears to have failed
+  sandbox-hang.md             a hung swift build/test - see the SandboxValidator timeout it drove
+  sqlite-lock-contention.md   concurrent writers to the same FlakyTestTracker/state/idempotency db
 ```
 
-None of these exist yet; this is the proposed skeleton, not a claim of existing operational documentation.
+`sandbox-hang.md` is the concrete example of this process working as intended: writing that
+runbook surfaced a real, then-unfixed gap (`SandboxValidator` had no timeout, so a hung
+`swift build` would hang the CLI forever), which was then closed with an actual `timeout`
+parameter, a `withTaskCancellationHandler`-based process kill, and a test proving a 30-second
+hang gets killed inside 1 second at a 0.3s configured timeout. The runbook was updated afterward
+to describe the fix, not just the gap.
 
 ## 69. Architecture Decision Records
 
-**(TARGET)** Proposed `docs/adr/`, one file per major decision, each with Context / Decision / Alternatives / Why Chosen / Consequences / When to Revisit:
+**(MEASURED)** `docs/adr/` exists with 8 ADRs, each with Context / Decision / Alternatives / Why Chosen / Consequences / When to Revisit, all documenting decisions already real and already built:
 
 ```
-ADR-001-two-gate-remediation-policy.md   (documents the real, already-built design)
-ADR-002-sandbox-git-worktree-isolation.md (documents the real, already-built design)
-ADR-003-event-bus-deferred.md
-ADR-004-gitops-over-push-cd.md
-ADR-005-postgres-over-dynamodb.md
+ADR-001-sqlite-for-local-durable-state.md
+ADR-002-deterministic-policy-outside-the-llm.md
+ADR-003-draft-only-prs-no-autonomous-merge.md
+ADR-004-sandbox-validation-in-a-disposable-worktree.md
+ADR-005-durable-remediation-state-machine.md
+ADR-006-idempotency-via-sqlite-unique-constraint.md
+ADR-007-no-implemented-continuous-deployment.md
+ADR-008-single-file-narrow-autonomy-scope.md
 ```
 
-The first two would document decisions that are already real and already justified in code comments (MEASURED: `PatchGenerator.swift`'s header comment already states "it never applies one - SandboxValidator and RemediationPolicy decide that"); the rest document target-state decisions not yet built.
+ADR-007 is the one that matters most for reading the rest of this document set correctly: it's
+the explicit statement that GitOps/Kubernetes/Terraform/Kafka/multi-region — everything section
+34 onward in this file describes — is target design, not running infrastructure, and states why
+this repo deliberately contains no stub/fake clients pretending otherwise.
 
 ## 70. Repository Documentation Should Work at Three Levels
 
@@ -679,7 +689,7 @@ Communicates the knowledge-graph idea (section 52's data model) without requirin
 
 ## 93. Benchmark Suite
 
-**(TARGET)** Proposed `fixtures/failures/` covering assertion failure, crash, timeout, flake, dependency regression, config regression, infra failure, simulator failure, network failure, known historical regression. Evaluate classification accuracy, fingerprint accuracy, retrieval recall, patch validation rate against this fixture set. Does not exist today; the real test suite (MEASURED, 76 tests) covers unit-level correctness of each component, not end-to-end classification accuracy against a labeled corpus.
+**(TARGET)** Proposed `fixtures/failures/` covering assertion failure, crash, timeout, flake, dependency regression, config regression, infra failure, simulator failure, network failure, known historical regression. Evaluate classification accuracy, fingerprint accuracy, retrieval recall, patch validation rate against this fixture set. Does not exist today; the real test suite (MEASURED, 104 tests) covers unit-level correctness of each component, not end-to-end classification accuracy against a labeled corpus.
 
 ## 94. Load Testing
 
@@ -687,7 +697,7 @@ Communicates the knowledge-graph idea (section 52's data model) without requirin
 
 ## 95. Performance Profiles
 
-**(TARGET)** Proposed profiling across small/medium/large `.xcresult` bundles, measuring parse time, memory, and fingerprinting time specifically. (MEASURED, real numbers from this session, not a formal profile: full local `swift test` run of 76 tests completes in ~1.6-2s including all classifier, fingerprint, policy, patch-generation, and sandbox-orchestration tests combined - this is a dev-loop signal, not a production performance profile of `.xcresult` parsing at scale.)
+**(TARGET)** Proposed profiling across small/medium/large `.xcresult` bundles, measuring parse time, memory, and fingerprinting time specifically. (MEASURED, real numbers from this session, not a formal profile: full local `swift test` run of 104 tests completes in ~1.6-2s including all classifier, fingerprint, policy, patch-generation, and sandbox-orchestration tests combined - this is a dev-loop signal, not a production performance profile of `.xcresult` parsing at scale.)
 
 ## 96. Deployment Modes
 

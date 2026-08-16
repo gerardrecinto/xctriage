@@ -789,7 +789,7 @@ in parallel with something slower.
 already does file-level incremental compilation via SPM's own build
 system: unchanged files are not recompiled. No affected-target or
 changed-file-based test selection exists on top of that; `swift test` in
-CI runs the full suite every time (76 tests, ~2 seconds locally per the
+CI runs the full suite every time (104 tests, ~2 seconds locally per the
 project's own timing, so the cost of not having incremental test selection
 is currently negligible. This is a case where the "optimization" would add
 complexity for a suite fast enough that it does not need one yet).
@@ -882,7 +882,7 @@ before/after run.
 
 ## 165. Unit Testing Philosophy
 
-**(MEASURED)** 76 tests, entirely unit and component-level: no end-to-end
+**(MEASURED)** 104 tests, entirely unit and component-level: no end-to-end
 test that spins up a real Claude call or a real multi-minute `swift build`
 inside CI exists (that would be slow and non-deterministic, exactly the
 tradeoff the fuller spec warns about). Every external dependency is
