@@ -49,6 +49,40 @@ final class FailureFingerprintTests: XCTestCase {
         XCTAssertEqual(a.value, b.value)
     }
 
+    func test_init_ignoresLongDigitRuns() {
+        // Covers the `\d{6,}` volatile pattern in FailureFingerprint.normalize
+        // (a PID, a timestamp, a build number) — implemented but previously
+        // untested directly, unlike the UUID/address/temp-path patterns above.
+        let a = FailureFingerprint(category: .infraFailure, failureSites: [site(message: "worker pid 482913 died unexpectedly")])
+        let b = FailureFingerprint(category: .infraFailure, failureSites: [site(message: "worker pid 9917305 died unexpectedly")])
+        XCTAssertEqual(a.value, b.value)
+    }
+
+    func test_init_shortDigitRunsStillDistinguishMessages() {
+        // The volatile-digit-run pattern only strips runs of 6+ digits, so a
+        // genuinely different short number (e.g. a line number embedded in
+        // the message, or an exit code) must still change the fingerprint.
+        let a = FailureFingerprint(category: .testFailure, failureSites: [site(message: "exit code 42")])
+        let b = FailureFingerprint(category: .testFailure, failureSites: [site(message: "exit code 137")])
+        XCTAssertNotEqual(a.value, b.value)
+    }
+
+    func test_init_usesOnlyFilenameNotFullDirectoryPath() {
+        // normalizedSignature takes URL(fileURLWithPath:).lastPathComponent,
+        // so the same file failing under two different checkout roots (a
+        // local path vs. a CI runner's workspace path) still fingerprints
+        // identically — previously implemented but untested directly.
+        let a = FailureFingerprint(
+            category: .compilationError,
+            failureSites: [site(file: "/Users/dev/xctriage/Foo.swift", message: "unresolved identifier 'Foo'")]
+        )
+        let b = FailureFingerprint(
+            category: .compilationError,
+            failureSites: [site(file: "/Users/runner/work/xctriage/xctriage/Foo.swift", message: "unresolved identifier 'Foo'")]
+        )
+        XCTAssertEqual(a.value, b.value)
+    }
+
     func test_init_handlesEmptyFailureSitesWithoutCrashing() {
         let fp = FailureFingerprint(category: .unknown, failureSites: [])
         XCTAssertFalse(fp.value.isEmpty)
