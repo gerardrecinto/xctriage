@@ -206,6 +206,15 @@ pipeline {
                         }
                     } else if (category == 'compilation_error') {
                         echo "Compilation-error verdict: asking xctriage remediate for a policy-gated, sandbox-validated patch proposal."
+                        // Deliberately no --create-pr here, unlike the GitHub Actions
+                        // workflow: this pipeline only has ANTHROPIC_CREDENTIAL_ID and
+                        // SLACK_CREDENTIAL_ID configured above, no GitHub push/PR
+                        // credential, so `gh pr create` would just fail unauthenticated.
+                        // GitHubPRWriter's actual git/gh calls need write access to this
+                        // repo that isn't provisioned for the Jenkins agent today; adding
+                        // it means wiring a real credential here, not a code change to
+                        // this file. Until then, the validated diff is archived for a
+                        // human to open the PR by hand.
                         def remediateStatus = sh(
                             script: '''
                                 "${XCTRIAGE_BIN}" remediate "${TEST_LOG}" \
