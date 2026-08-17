@@ -15,8 +15,21 @@ follow it.
 a plain Swift struct with no LLM call in it. It runs twice: once before
 patch generation (`isEligibleForRemediation` — category allowlist, minimum
 confidence, attempt count) and once after (`isPatchAllowed` — file count,
-forbidden path prefixes including its own source file and `.github/`). Both
-return a `Decision` enum the CLI checks with a plain `guard`.
+forbidden path prefixes including its own source file and `.github/`,
+matched case-insensitively). Both return a `Decision` enum the CLI checks
+with a plain `guard`.
+
+A third deterministic check, `UnifiedDiffInspector.matchesClaimedPath`
+(`Sources/XCTriageKit/Remediation/UnifiedDiffInspector.swift`, added later
+in the same line of work as the policy hardening above), runs immediately
+after `isPatchAllowed` and closes a gap `isPatchAllowed` alone can't:
+`isPatchAllowed` validates `proposal.filePath`, a string the LLM echoes
+back in its JSON response, but `git apply` acts on whatever the diff's own
+`+++ b/...` header actually says — nothing previously checked those two
+agree, or that the diff doesn't smuggle in hunks for additional files
+beyond the one claimed. Same principle as the rest of this ADR (a plain
+Swift function, unit tested, no LLM call), applied to a different point
+in the pipeline where the LLM's own output could disagree with itself.
 
 ## Alternatives
 

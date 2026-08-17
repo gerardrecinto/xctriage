@@ -41,6 +41,19 @@ is a property that's easy to state and easy to verify by reading the type —
 
 ## Consequences
 
+- "Tears the worktree down whether validation passed or failed" was true
+  as a design intent from the start, but not true in the first
+  implementation: the cleanup was a fire-and-forget `Task { ... }` inside a
+  `defer`, never awaited. In a short-lived CLI process, that detached task
+  races process exit and loses almost every time, so worktrees leaked on
+  essentially every real invocation — reproduced with a regression test
+  before fixing it (a deliberately slow fake `git worktree remove` proved
+  `validate()` was returning before cleanup finished). Fixed by restructuring
+  `validate()` to await cleanup on both the success and thrown-error paths.
+  Worth noting here specifically because it's a reminder that "the design
+  says X" and "the code does X" are different claims — this ADR was
+  originally written describing the intent, not (yet, at the time) a
+  verified fact about the implementation.
 - Validation isolation is filesystem-level, not process/kernel-level. A
   patch that could somehow break out of the worktree during `swift build`
   (arbitrary code in a build plugin, for instance) isn't contained by this
