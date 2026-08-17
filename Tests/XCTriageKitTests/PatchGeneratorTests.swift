@@ -50,6 +50,25 @@ final class PatchGeneratorTests: XCTestCase {
         XCTAssertEqual(proposal.filePath, "Foo.swift")
     }
 
+    func test_proposePatch_stripsSingleLineMarkdownCodeFence() async throws {
+        // A fenced response with no embedded newline around the fence markers
+        // themselves (the JSON's own \n escapes inside string values don't
+        // count as line breaks in the raw response text). Verified separately
+        // that the line-based drop-first/drop-last strategy empties this case.
+        let payload: [String: Any] = [
+            "content": [
+                ["type": "text", "text": "```{\"file_path\":\"Foo.swift\",\"unified_diff\":\"diff\",\"rationale\":\"r\",\"confidence\":0.5}```"]
+            ]
+        ]
+        StubURLProtocol.responseData = try JSONSerialization.data(withJSONObject: payload)
+        StubURLProtocol.statusCode = 200
+
+        let generator = PatchGenerator(apiKey: "test-key", session: stubbedSession())
+        let proposal = try await generator.proposePatch(category: .compilationError, failureSite: site(), fileContents: "x")
+
+        XCTAssertEqual(proposal.filePath, "Foo.swift")
+    }
+
     func test_proposePatch_throwsOnNonJSONResponseBody() async {
         StubURLProtocol.responseData = Data("not json at all".utf8)
         StubURLProtocol.statusCode = 200
