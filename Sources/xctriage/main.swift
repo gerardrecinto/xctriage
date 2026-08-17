@@ -488,18 +488,28 @@ struct Flaky: AsyncParsableCommand {
 
     mutating func run() async throws {
         let tracker = try FlakyTestTracker(dbPath: db)
-        let top = try await tracker.topFlaky(n: n)
-        if top.isEmpty {
+
+        // Checked separately from `top` below: `topFlaky(n: n)` is bounded by
+        // the caller's own --n, so `--n 0` made this command claim "No flaky
+        // test history" even when real history existed, and skipped
+        // --show-quarantine-candidates entirely along with it — an n=0
+        // request for "just the quarantine section, skip the ranked list"
+        // was indistinguishable from an empty database.
+        guard try await !tracker.topFlaky(n: 1).isEmpty else {
             print("No flaky test history.")
             return
         }
-        print("\n  Top \(top.count) flaky tests (last 90 days)\n")
-        print("  Score   Test")
-        print("  " + String(repeating: "-", count: 55))
-        for (name, score) in top {
-            print("  \(FlakyBarFormatter.row(name: name, score: score))")
+
+        let top = try await tracker.topFlaky(n: n)
+        if !top.isEmpty {
+            print("\n  Top \(top.count) flaky tests (last 90 days)\n")
+            print("  Score   Test")
+            print("  " + String(repeating: "-", count: 55))
+            for (name, score) in top {
+                print("  \(FlakyBarFormatter.row(name: name, score: score))")
+            }
+            print()
         }
-        print()
 
         if showQuarantineCandidates {
             let candidates = try await tracker.quarantineCandidates(threshold: quarantineThreshold)
