@@ -71,4 +71,68 @@ final class UnifiedDiffInspectorTests: XCTestCase {
         // a mismatch rather than assuming it's fine.
         XCTAssertFalse(UnifiedDiffInspector.matchesClaimedPath("Sources/Foo.swift", diff: "garbage"))
     }
+
+    // The gap this closes: a single unified_diff STRING can legitimately
+    // contain more than one file's header block concatenated together —
+    // verified empirically with real git: `git apply` on a diff with two
+    // `--- a/...`/`+++ b/...` blocks applies BOTH files' changes, exit 0, no
+    // complaint. RemediationPolicy.isPatchAllowed is always called with a
+    // hardcoded `[proposal.filePath]` single-element array, so its
+    // maxFilesChanged check is vacuous — it never actually counts what the
+    // diff touches. The original matchesClaimedPath only inspected the
+    // FIRST `+++` line, so a diff claiming to touch only an allowed file
+    // while ALSO smuggling in hunks for a forbidden file (e.g.
+    // RemediationPolicy.swift itself) would pass every existing gate.
+    func test_targetPath_onlyReturnsFirstFile_documentingTheGapAllTargetPathsCloses() {
+        let smuggledDiff = """
+        --- a/Sources/Foo.swift
+        +++ b/Sources/Foo.swift
+        @@ -1 +1 @@
+        -let x = 1
+        +let x = 2
+        --- a/Sources/Policy/RemediationPolicy.swift
+        +++ b/Sources/Policy/RemediationPolicy.swift
+        @@ -1 +1 @@
+        -forbid this
+        +allow this
+        """
+        // targetPath alone can't see the smuggled second file — that's
+        // exactly why matchesClaimedPath must use allTargetPaths, not this.
+        XCTAssertEqual(UnifiedDiffInspector.targetPath(in: smuggledDiff), "Sources/Foo.swift")
+    }
+
+    func test_allTargetPaths_findsEveryFileHeaderNotJustTheFirst() {
+        let diff = """
+        --- a/Sources/Foo.swift
+        +++ b/Sources/Foo.swift
+        @@ -1 +1 @@
+        -let x = 1
+        +let x = 2
+        --- a/Sources/Bar.swift
+        +++ b/Sources/Bar.swift
+        @@ -1 +1 @@
+        -let y = 1
+        +let y = 2
+        """
+        XCTAssertEqual(UnifiedDiffInspector.allTargetPaths(in: diff), ["Sources/Foo.swift", "Sources/Bar.swift"])
+    }
+
+    func test_matchesClaimedPath_falseWhenDiffSmugglesASecondFile() {
+        let smuggledDiff = """
+        --- a/Sources/Foo.swift
+        +++ b/Sources/Foo.swift
+        @@ -1 +1 @@
+        -let x = 1
+        +let x = 2
+        --- a/Sources/Policy/RemediationPolicy.swift
+        +++ b/Sources/Policy/RemediationPolicy.swift
+        @@ -1 +1 @@
+        -forbid this
+        +allow this
+        """
+        XCTAssertFalse(
+            UnifiedDiffInspector.matchesClaimedPath("Sources/Foo.swift", diff: smuggledDiff),
+            "a diff touching a second file must not pass just because the FIRST file matches the claim"
+        )
+    }
 }
