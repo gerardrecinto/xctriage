@@ -112,22 +112,7 @@ public actor PatchGenerator {
             throw TriageError.parseError("Unexpected Claude response shape")
         }
 
-        var json = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if json.hasPrefix("```") {
-            // Multi-line fence (```json\n{...}\n```): drop the opening fence
-            // line (with or without a language tag) up to its newline.
-            // Single-line fence (```{...}```, no embedded newline around the
-            // markers): fall back to just stripping the leading marker.
-            if let firstNewline = json.firstIndex(of: "\n") {
-                json = String(json[json.index(after: firstNewline)...])
-            } else {
-                json.removeFirst(3)
-            }
-            if json.hasSuffix("```") {
-                json.removeLast(3)
-            }
-            json = json.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        let json = MarkdownJSONFenceStripper.strip(rawText)
 
         guard let jsonData = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {

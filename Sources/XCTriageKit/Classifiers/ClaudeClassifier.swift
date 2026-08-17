@@ -100,12 +100,7 @@ public actor ClaudeClassifier {
             throw TriageError.parseError("Unexpected Claude response shape")
         }
 
-        // Strip optional markdown code fence
-        var json = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if json.hasPrefix("```") {
-            let lines = json.components(separatedBy: "\n")
-            json = lines.dropFirst().dropLast().joined(separator: "\n")
-        }
+        let json = MarkdownJSONFenceStripper.strip(rawText)
 
         guard let jsonData = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
