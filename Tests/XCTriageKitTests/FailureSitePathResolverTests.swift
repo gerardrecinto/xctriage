@@ -36,4 +36,45 @@ final class FailureSitePathResolverTests: XCTestCase {
         )
         XCTAssertEqual(resolved, "/private/tmp/pathprobe/Sources/pathprobe/main.swift")
     }
+
+    // Second half of the same bug class: PatchGenerator used to be shown the
+    // absolute resolved path in its prompt (`File: /Users/x/Sources/Foo.swift`),
+    // with no instruction to use a different format in its response. An LLM
+    // asked to propose a unified diff for a file it was shown at an absolute
+    // path very plausibly mirrors that same absolute path into the diff's
+    // `--- a/...`/`+++ b/...` headers — and `git apply` REJECTS an absolute
+    // path in a diff header outright. Verified empirically: `git apply` on a
+    // diff with `--- a//tmp/x/Foo.swift` fails with "error: invalid path
+    // '/tmp/x/Foo.swift'", exit 128, against a real git repo. Computing a
+    // clean repo-relative path to show the LLM instead (this function) closes
+    // that off at the source, rather than hoping prompt wording alone
+    // prevents an absolute path from ever reaching the diff.
+    func test_repoRelativePath_stripsRepoRootFromResolvedFile() {
+        let relative = FailureSitePathResolver.repoRelativePath(
+            forResolvedFile: "/Users/runner/work/xctriage/xctriage/Sources/XCTriageKit/Foo.swift",
+            repoRoot: "/Users/runner/work/xctriage/xctriage"
+        )
+        XCTAssertEqual(relative, "Sources/XCTriageKit/Foo.swift")
+    }
+
+    func test_repoRelativePath_handlesRepoRootWithTrailingSlash() {
+        let relative = FailureSitePathResolver.repoRelativePath(
+            forResolvedFile: "/repo/Sources/Foo.swift",
+            repoRoot: "/repo/"
+        )
+        XCTAssertEqual(relative, "Sources/Foo.swift")
+    }
+
+    func test_repoRelativePath_fallsBackToResolvedFileWhenNotUnderRepoRoot() {
+        // A failure in, say, an SDK header outside the checkout has no
+        // sensible relative path — fall back to the resolved path rather
+        // than producing something nonsensical. This tool can't patch a
+        // file outside the repo either way (git apply would fail against
+        // it regardless), so this is an inherent limit, not a new gap.
+        let relative = FailureSitePathResolver.repoRelativePath(
+            forResolvedFile: "/opt/sdk/Headers/Foo.h",
+            repoRoot: "/Users/dev/repo"
+        )
+        XCTAssertEqual(relative, "/opt/sdk/Headers/Foo.h")
+    }
 }

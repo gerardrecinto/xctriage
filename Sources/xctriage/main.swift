@@ -266,8 +266,20 @@ struct Remediate: AsyncParsableCommand {
             throw TriageError.fileNotFound(filePath)
         }
 
+        // PatchGenerator must never be shown the absolute resolved path: an
+        // LLM asked to produce a diff for a file it was shown at an
+        // absolute path plausibly mirrors that same absolute path into the
+        // diff's headers, and `git apply` rejects an absolute path there
+        // outright (verified empirically — "error: invalid path", exit
+        // 128). Show it a clean repo-relative path instead.
+        let relativeFile = FailureSitePathResolver.repoRelativePath(forResolvedFile: filePath, repoRoot: repoRoot)
+        let relativeSite = FailureSite(
+            file: relativeFile, line: site.line, column: site.column,
+            testName: site.testName, errorMessage: site.errorMessage
+        )
+
         let generator = PatchGenerator(apiKey: apiKey)
-        let proposal = try await generator.proposePatch(category: category, failureSite: site, fileContents: fileContents)
+        let proposal = try await generator.proposePatch(category: category, failureSite: relativeSite, fileContents: fileContents)
         try await stateMachine.transition(key: fingerprint.value, to: .patchProposed)
 
         let patchDecision = policy.isPatchAllowed(filesChanged: [proposal.filePath])

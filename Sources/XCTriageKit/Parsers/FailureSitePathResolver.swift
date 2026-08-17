@@ -17,4 +17,22 @@ public enum FailureSitePathResolver {
         let base = URL(fileURLWithPath: repoRoot, isDirectory: true)
         return URL(fileURLWithPath: file, relativeTo: base).path
     }
+
+    // The inverse: given a resolved (absolute) file path and repoRoot,
+    // compute the path relative to repoRoot to show an LLM instead of the
+    // absolute path. `git apply` rejects an absolute path in a diff's
+    // `--- a/...`/`+++ b/...` headers outright (verified empirically:
+    // "error: invalid path", exit 128) — showing the LLM a clean relative
+    // path up front means it has no absolute path to echo into the diff.
+    public static func repoRelativePath(forResolvedFile resolvedFile: String, repoRoot: String) -> String {
+        let repoRootAbsolute = URL(fileURLWithPath: repoRoot, isDirectory: true).standardizedFileURL.path
+        let prefix = repoRootAbsolute.hasSuffix("/") ? repoRootAbsolute : repoRootAbsolute + "/"
+        guard resolvedFile.hasPrefix(prefix) else {
+            // Not under repoRoot (e.g. an SDK header outside the checkout) —
+            // this tool can't patch it either way, so fall back to the
+            // resolved path rather than fabricate a nonsensical relative one.
+            return resolvedFile
+        }
+        return String(resolvedFile.dropFirst(prefix.count))
+    }
 }
