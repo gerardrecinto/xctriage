@@ -66,7 +66,23 @@ Every box below is a real step in `.github/workflows/ci.yml` or a real method ca
                                          Yes                           |
                                           |                            v
                                           v                   ( fail job, blocked
-                              [ PatchGenerator.proposePatch ]   [reason] printed )
+                          [ FailureSitePathResolver.         [reason] printed )
+                             resolve + read file ]
+                          (real compiler paths are ABSOLUTE
+                           — verified against real swift
+                           build output — resolved directly,
+                           never joined onto repoRoot)
+                                          |
+                                          v
+                          [ FailureSitePathResolver.
+                             repoRelativePath ]
+                          (the LLM is shown a clean relative
+                           path from here on, never the
+                           absolute one — git apply rejects
+                           an absolute path in a diff header)
+                                          |
+                                          v
+                              [ PatchGenerator.proposePatch ]
                               (Claude, single-file diff only,
                                never applies it — ADR-002)
                                           |
@@ -78,14 +94,30 @@ Every box below is a real step in `.github/workflows/ci.yml` or a real method ca
                                  isPatchAllowed ]
                               (≤1 file, forbidden paths:
                                its own source, .github/,
-                               Package.swift)
+                               Package.swift — case-
+                               insensitive)
                                           |
                                   < patch allowed? >---No---> [ transition:
                                           |                     .policyRejected ]
                                          Yes                           |
                                           |                            v
                                           v                   ( fail job, blocked
-                              [ transition: .validating ]      [reason] printed )
+                              [ UnifiedDiffInspector.          [reason] printed )
+                                 matchesClaimedPath ]
+                              (does the diff's own +++
+                               header — every one, not
+                               just the first — actually
+                               match file_path? closes the
+                               gap between what the policy
+                               validated and what git apply
+                               would really write)
+                                          |
+                                  < diff matches claim? >---No---> [ transition:
+                                          |                          .policyRejected ]
+                                         Yes                                |
+                                          |                                 v
+                                          v                        ( fail job, blocked
+                              [ transition: .validating ]           [reason] printed )
                                           |
                                           v
                           [ SandboxValidator.validate ]
