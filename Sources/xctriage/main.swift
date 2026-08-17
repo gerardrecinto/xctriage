@@ -7,7 +7,7 @@ struct XCTriage: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "xctriage",
         abstract: "AI-powered CI failure analysis for Apple platforms",
-        version: "1.4.0",
+        version: "1.4.1",
         subcommands: [Analyze.self, Flaky.self, Remediate.self]
     )
 }

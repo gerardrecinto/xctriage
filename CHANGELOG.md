@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.4.1
+
+### Fixed
+- **`xctriage remediate` couldn't actually read the failing file for any real compiler-reported failure.** Real `xcodebuild`/`swift build` diagnostics report absolute file paths (verified against real `swift build` output, not assumed). The code joined that path onto `repoRoot` with `NSString.appendingPathComponent`, which doesn't special-case an absolute argument — `"." + "/Users/x/Foo.swift"` produced the nonsensical `"./Users/x/Foo.swift"`, which doesn't exist. Reproduced end-to-end against the real binary and a real compile error before fixing it (`Error: fileNotFound(...)`); this meant the entire policy → patch → sandbox → PR pipeline was unreachable for real usage. Fixed with `FailureSitePathResolver.resolve(file:repoRoot:)`.
+- `PatchGenerator` was shown the absolute resolved file path with no instruction about path format, and an LLM asked to produce a diff for a file it was shown at an absolute path plausibly mirrors that same absolute path into the diff's `--- a/...`/`+++ b/...` headers — but `git apply` rejects an absolute path in a diff header outright (verified empirically: "error: invalid path", exit 128). Fixed with `FailureSitePathResolver.repoRelativePath(forResolvedFile:repoRoot:)`, so the LLM never sees an absolute path to begin with.
+- Nothing verified that a `PatchProposal`'s claimed `file_path` matched the file its own `unified_diff` actually targets. Added `UnifiedDiffInspector.matchesClaimedPath`, wired as a new deterministic gate in `xctriage remediate` right after the existing forbidden-path check.
+- That new check itself had a gap: it only inspected the diff's *first* `+++` header. Verified empirically that a single `unified_diff` string can contain multiple file header blocks concatenated together, and `git apply` applies all of them with no complaint — so a diff claiming to touch only an allowed file could have smuggled in hunks for a forbidden one (e.g. `RemediationPolicy.swift` itself). Fixed by requiring the diff touch *exactly* the one claimed file.
+- `RemediationPolicy`'s forbidden-path safety check was case-sensitive, but macOS's default filesystem (APFS) is case-insensitive-but-preserving and `PatchProposal.filePath` is LLM-echoed, not guaranteed to preserve on-disk casing — `"sources/xctriage/main.swift"` bypassed a check that `"Sources/xctriage/main.swift"` would have caught. Fixed with a case-insensitive comparison.
+- `SandboxValidator`'s worktree cleanup was a fire-and-forget `Task { ... }` inside a `defer`, never awaited. In a short-lived CLI process, that detached task races process exit and loses almost every time — sandbox worktrees leaked on essentially every real `xctriage remediate` invocation. Fixed by awaiting cleanup on both the success and thrown-error paths before returning.
+- `TerminalReporter.confidenceBar` used `String(repeating:count:)` on an unclamped confidence value. `ClaudeClassifier` parses `confidence` straight out of untrusted LLM JSON with no bounds check, so an out-of-range value (e.g. `1.5` or `-0.3`) triggered a fatal trap ("Negative count not allowed"). Fixed by clamping, matching `FlakyBarFormatter`'s existing clamp.
+- `SlackReporter` had no cap on mrkdwn text block length. Slack rejects an entire message if any single block exceeds 3000 characters, so an unusually long LLM-generated summary or fix made the whole notification silently fail to send instead of just being long. Added truncation.
+- `BuildLogParser.extractFailureSites` deduped repeated Swift/ObjC compiler errors by file:line, but not repeated linker error lines — a duplicated `ld:` line (e.g. from double-logged CI output) produced duplicate `FailureSite`s.
+- `Analyze.run()`'s `.xcresult` input path never checked `--llm`/`--llm-always` at all, unlike the build-log path a few lines below it — both flags were silently ignored for `.xcresult` input. Extracted the shared decision into `LLMFallbackPolicy.shouldUseLLM(...)` and wired both paths through it identically.
+- `RemediationPolicy`'s forbidden-path list now also covers its own remediation pipeline (`Sources/XCTriageKit/Remediation/`) and the CLI entrypoint (`Sources/xctriage/`), closing a gap where a `compilation_error` in the tool's own safety machinery could have produced a PR patching that machinery.
+
+### Added
+- `FlakyTestTracker.quarantineCandidates(threshold:)`, wired into `xctriage flaky --show-quarantine-candidates` — the quarantine threshold the tracker's own header comment had documented since it was written, now actually computed.
+- `SandboxValidator` now takes a `timeout` (CLI: `--sandbox-timeout`, default 300s per step) and kills a hung `swift build`/`swift test` instead of hanging the CLI forever.
+- Test coverage for `FailureFingerprint`'s digit-run and full-path normalization behavior, previously implemented but untested directly.
+- `docs/adr/` (8 ADRs), `docs/runbooks/` (5 runbooks), `docs/assets/` (3 SVG diagrams), `docs/architecture/WHAT_I_DID_NOT_BUILD.md`, `docs/architecture/HIGH_LEVEL_ARCHITECTURE.md`.
+- A Jenkinsfile comment documenting why Jenkins archives the remediation diff instead of using `--create-pr` (no GitHub push credential configured for that pipeline — a real infrastructure gap, not something to fake).
+
+### Changed
+- Switched all documentation and code comments to first person — this project has one author, not a team.
+
 ## v1.4.0
 
 ### Added
