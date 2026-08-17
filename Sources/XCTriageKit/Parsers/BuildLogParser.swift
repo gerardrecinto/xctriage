@@ -96,12 +96,18 @@ public struct BuildLogParser: Sendable {
                 }
                 continue
             }
-            // XCTest failure
+            // XCTest failure. Dedup on test name, not the full line: a test
+            // retried via `xcodebuild -retry-tests-on-failure` logs its own
+            // "Test Case '...' failed" line once per attempt, each with a
+            // different duration, for what's still one failure to triage.
             if let m = Self.testFailRE.firstMatch(in: entry.message, range: msgRange) {
                 let name = strAt(entry.message, m.range(at: 1))
                 let dur  = strAt(entry.message, m.range(at: 2))
-                sites.append(FailureSite(file: nil, line: nil, column: nil,
-                                         testName: name, errorMessage: "failed in \(dur ?? "?")s"))
+                let key  = "test:\(name ?? "")"
+                if seen.insert(key).inserted {
+                    sites.append(FailureSite(file: nil, line: nil, column: nil,
+                                             testName: name, errorMessage: "failed in \(dur ?? "?")s"))
+                }
                 continue
             }
             // Linker error. No file/line to key on, so dedup on the message

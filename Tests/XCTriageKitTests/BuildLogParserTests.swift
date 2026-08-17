@@ -82,6 +82,24 @@ final class BuildLogParserTests: XCTestCase {
         XCTAssertEqual(linkerSites.count, 1)
     }
 
+    func test_extractFailureSites_dedupsRepeatedTestFailure() {
+        // Same gap as the linker-error branch, in the XCTest-failure branch
+        // instead: no dedup at all. `xcodebuild -retry-tests-on-failure`
+        // logs a "Test Case '...' failed" line once per retry attempt for
+        // the same underlying failure, so a real retried-and-still-failing
+        // test produces one duplicate FailureSite per retry.
+        let log = """
+        Test Case '-[FooTests testBar]' failed (0.12 seconds)
+        Test Case '-[FooTests testBar]' failed (0.09 seconds)
+        ** TEST FAILED **
+        """
+        let entries = parser.parse(log)
+        let context = parser.extractFailureContext(entries)
+        let sites = parser.extractFailureSites(context)
+        let testSites = sites.filter { $0.testName == "-[FooTests testBar]" }
+        XCTAssertEqual(testSites.count, 1)
+    }
+
     func test_parse_emptyLog() {
         let entries = parser.parse("")
         XCTAssertEqual(entries.count, 1, "Empty string yields one empty entry")
