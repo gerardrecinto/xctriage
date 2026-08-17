@@ -83,7 +83,7 @@ xcodebuild / xcresult bundle / CI log
 │                     ▼                                   │
 │  ┌──────────────────────────────────────────────┐       │
 │  │            RuleClassifier (struct)            │       │
-│  │  17 NSRegularExpression rules                 │       │
+│  │  16 NSRegularExpression rules                 │       │
 │  │  7 categories · sub-millisecond · no network │       │
 │  └───────────────────┬──────────────────────────┘       │
 │                      │ confidence < 0.60 AND --llm       │
@@ -115,7 +115,7 @@ xcodebuild / xcresult bundle / CI log
 | Source | Flag | What it parses |
 |---|---|---|
 | xcodebuild | `--source xcodebuild` | `.swift`/`.m` file:line:col errors, XCTest case failures, linker errors, `** BUILD FAILED **` |
-| xcresult bundle | `--input build.xcresult` | `xcrun xcresulttool` JSON: build errors, test failures |
+| xcresult bundle | `build.xcresult` (positional) | `xcrun xcresulttool --legacy` JSON: build errors, test failures |
 | GitHub Actions | `--source github` | `##[error]` annotations, `::error file=` |
 | Generic | `--source generic` | Rule-based fallback |
 
@@ -123,7 +123,7 @@ xcodebuild / xcresult bundle / CI log
 
 ## Failure Categories
 
-| Category | Patterns (17 total) | Apple CI example |
+| Category | Patterns (16 total) | Apple CI example |
 |---|---|---|
 | `compilation_error` | unresolved identifier, type mismatch, linker, code sign | `use of unresolved identifier 'AVAssetTrackSegment'` |
 | `test_failure` | XCTest case failed, XCTAssert failure, `** TEST FAILED **` | `Test Case '-[MediaTests testBitIdentical]' failed (2.3s)` |
@@ -156,13 +156,13 @@ Rather than a feature checklist, here is how each concept appears in the actual 
 - `DBHandle: @unchecked Sendable`: wraps `OpaquePointer` so actor `deinit` can close SQLite without violation
 
 **`Codable` for xcresult JSON**
-- `XCResultSummary`, `XCResultAction`, `XCResultIssueSummary`: decode `xcresulttool` output with custom `CodingKeys` for Apple's `_value` nested structure
+- `XCResultSummary`, `XCResultAction`, `XCResultIssueSummary`, `XCResultTestFailureSummary`: plain structs decoded against xcresulttool `--legacy` output after `unwrapLegacyEnvelope` strips Apple's `{"_type", "_value"/"_values"}` wrapper recursively, once, up front — rather than a custom `CodingKeys`/nested-wrapper-type per field
 
 **`NSRegularExpression` at module level**
-- All 17 patterns compiled once in `BuildLogParser` static constants: avoids per-call recompilation across every build log line
+- All 6 patterns compiled once in `BuildLogParser` static constants: avoids per-call recompilation across every build log line
 
 **`CommandConfiguration` + `AsyncParsableCommand`**
-- `swift-argument-parser` integration for `analyze` and `flaky` subcommands with typed flags and options
+- `swift-argument-parser` integration for `analyze`, `remediate`, and `flaky` subcommands with typed flags and options
 
 ---
 
@@ -318,7 +318,7 @@ xctriage analyze build.log --source xcodebuild --exit-code
 ## Tests
 
 ```bash
-swift test                          # 22 tests
+swift test                          # 164 tests
 swift test --enable-code-coverage   # with coverage
 swift build -c release              # build binary
 bash scripts/make_demo.sh           # run demo fixtures
