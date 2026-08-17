@@ -291,6 +291,17 @@ struct Remediate: AsyncParsableCommand {
             Foundation.exit(4)
         }
 
+        // RemediationPolicy above only validated proposal.filePath, the
+        // LLM's own claim of what it changed — it never checked that the
+        // diff actually targets that same file. Without this, a response
+        // where those two disagree would sail past the forbidden-path
+        // check entirely.
+        guard UnifiedDiffInspector.matchesClaimedPath(proposal.filePath, diff: proposal.unifiedDiff) else {
+            print("Patch blocked [\(fingerprint.value)]: diff does not target the claimed file_path (\(proposal.filePath))")
+            try await stateMachine.transition(key: fingerprint.value, to: .policyRejected)
+            Foundation.exit(4)
+        }
+
         if createPR && skipSandbox {
             print("Refusing --create-pr with --skip-sandbox: a PR must be backed by a passing sandbox validation.")
             Foundation.exit(4)
