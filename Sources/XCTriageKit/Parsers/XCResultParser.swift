@@ -21,28 +21,82 @@ public actor XCResultParser {
 
     // Returns the top-level JSON summary from an xcresult bundle
     public func summary(bundlePath: String) async throws -> XCResultSummary {
+        // --legacy is required as of Xcode 16's xcresulttool (verified against
+        // tool version 24514, Xcode 26.2): without it, `get` exits 64
+        // unconditionally with "This command is deprecated... --legacy flag
+        // is required to use it", before even checking whether bundlePath
+        // exists.
         let json = try await run(
-            arguments: ["xcresulttool", "get", "--format", "json", "--path", bundlePath]
+            arguments: ["xcresulttool", "get", "--legacy", "--format", "json", "--path", bundlePath]
         )
         let data = Data(json.utf8)
-        return try JSONDecoder().decode(XCResultSummary.self, from: data)
+        guard let raw = try? JSONSerialization.jsonObject(with: data) else {
+            throw TriageError.parseError("xcresulttool returned non-JSON output")
+        }
+        // --legacy's JSON wraps every value in a {"_type": {...}, "_value": ...}
+        // or {"_type": {...}, "_values": [...]} envelope (verified against
+        // real bundles from `xcodebuild test -resultBundlePath`, both a build
+        // failure and a genuine XCTest assertion failure) — unwrap it into
+        // plain JSON once, up front, rather than writing a custom decode
+        // path for every field.
+        let unwrapped = Self.unwrapLegacyEnvelope(raw)
+        let cleanData = try JSONSerialization.data(withJSONObject: unwrapped)
+        return try JSONDecoder().decode(XCResultSummary.self, from: cleanData)
     }
 
-    // Returns all test failure sites extracted from the bundle
+    // Returns all test failure sites extracted from the bundle: genuine
+    // XCTest assertion failures (testFailureSummaries, which carry the test
+    // name and a document location) plus any generic build-blocking issues
+    // (errorSummaries) reported alongside them. Verified against a real
+    // xcodebuild test run with a deliberately-failing assertion that
+    // errorSummaries entries for a build failure don't carry a reliable
+    // document location the way testFailureSummaries entries do — parseFileURL
+    // degrades to (nil, nil, nil) for a nil/missing url either way.
     public func testFailures(bundlePath: String) async throws -> [FailureSite] {
         let summary = try await summary(bundlePath: bundlePath)
         var sites: [FailureSite] = []
 
         for action in summary.actions ?? [] {
-            guard let issues = action.actionResult?.buildResult?.issues else { continue }
-            for error in issues.errors ?? [] {
-                let msg = error.message?.value ?? "unknown error"
-                let url = error.documentLocation?.url?.value
-                let (file, line, col) = parseFileURL(url)
-                sites.append(FailureSite(file: file, line: line, column: col, testName: nil, errorMessage: msg))
+            guard let issues = action.actionResult?.issues else { continue }
+
+            for failure in issues.testFailureSummaries ?? [] {
+                let (file, line, col) = parseFileURL(failure.documentLocationInCreatingWorkspace?.url)
+                sites.append(FailureSite(
+                    file: file, line: line, column: col,
+                    testName: failure.testCaseName, errorMessage: failure.message ?? "unknown error"
+                ))
+            }
+            for error in issues.errorSummaries ?? [] {
+                let (file, line, col) = parseFileURL(error.documentLocation?.url)
+                sites.append(FailureSite(
+                    file: file, line: line, column: col,
+                    testName: nil, errorMessage: error.message ?? "unknown error"
+                ))
             }
         }
         return sites
+    }
+
+    // See the comment on `summary(bundlePath:)`: recursively strips
+    // xcresulttool --legacy's {"_type", "_value"/"_values"} envelope down to
+    // plain JSON values, so the Codable types below can be ordinary structs
+    // instead of a custom decoder for every field.
+    private static func unwrapLegacyEnvelope(_ value: Any) -> Any {
+        if let array = value as? [Any] {
+            return array.map(unwrapLegacyEnvelope)
+        }
+        guard let dict = value as? [String: Any] else { return value }
+        if let values = dict["_values"] as? [Any] {
+            return values.map(unwrapLegacyEnvelope)
+        }
+        if let scalar = dict["_value"] {
+            return scalar
+        }
+        var result: [String: Any] = [:]
+        for (key, nested) in dict where key != "_type" {
+            result[key] = unwrapLegacyEnvelope(nested)
+        }
+        return result
     }
 
     // MARK: Private
@@ -130,46 +184,48 @@ public actor XCResultParser {
     }
 }
 
-// MARK: Codable types for xcresulttool JSON output
+// MARK: Codable types for xcresulttool --legacy JSON output
+//
+// Shaped to match the JSON *after* unwrapLegacyEnvelope strips xcresulttool's
+// {"_type", "_value"/"_values"} wrapper — every field below is the plain
+// value it looks like, not a nested wrapper struct. Verified against three
+// real `xcodebuild test -resultBundlePath` bundles: a scheme-level build
+// failure, a real compile error in application code, and a genuine XCTest
+// assertion failure. All three land errorSummaries directly under
+// actionResult.issues (not nested inside a separate buildResult, which
+// doesn't exist at that path in real output); only testFailureSummaries
+// entries carry testCaseName and a document location
+// (documentLocationInCreatingWorkspace, not documentLocation — that key
+// name is specific to the plain IssueSummary/errorSummaries case).
 
 public struct XCResultSummary: Codable, Sendable {
     public let actions: [XCResultAction]?
-
-    enum CodingKeys: String, CodingKey { case actions }
 }
 
 public struct XCResultAction: Codable, Sendable {
     public let actionResult: XCResultActionResult?
-    enum CodingKeys: String, CodingKey { case actionResult }
 }
 
 public struct XCResultActionResult: Codable, Sendable {
-    public let buildResult: XCResultBuildResult?
-    enum CodingKeys: String, CodingKey { case buildResult }
-}
-
-public struct XCResultBuildResult: Codable, Sendable {
     public let issues: XCResultIssues?
-    enum CodingKeys: String, CodingKey { case issues }
 }
 
 public struct XCResultIssues: Codable, Sendable {
-    public let errors: [XCResultIssueSummary]?
-    enum CodingKeys: String, CodingKey { case errors }
+    public let errorSummaries: [XCResultIssueSummary]?
+    public let testFailureSummaries: [XCResultTestFailureSummary]?
 }
 
 public struct XCResultIssueSummary: Codable, Sendable {
-    public let message: XCResultValue?
+    public let message: String?
     public let documentLocation: XCResultDocumentLocation?
-    enum CodingKeys: String, CodingKey { case message, documentLocation }
+}
+
+public struct XCResultTestFailureSummary: Codable, Sendable {
+    public let message: String?
+    public let testCaseName: String?
+    public let documentLocationInCreatingWorkspace: XCResultDocumentLocation?
 }
 
 public struct XCResultDocumentLocation: Codable, Sendable {
-    public let url: XCResultValue?
-    enum CodingKeys: String, CodingKey { case url }
-}
-
-public struct XCResultValue: Codable, Sendable {
-    public let value: String?
-    enum CodingKeys: String, CodingKey { case value = "_value" }
+    public let url: String?
 }
