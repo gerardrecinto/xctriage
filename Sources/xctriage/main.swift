@@ -67,7 +67,7 @@ struct Analyze: AsyncParsableCommand {
                 LogEntry(lineNumber: 0, level: .error,
                          message: "\(s.locationDescription): \(s.errorMessage)", raw: "")
             }
-            var result = RuleClassifier().classify(entries)
+            var result = XCResultCategoryFallback.apply(ruleResult: RuleClassifier().classify(entries), failureSites: sites)
 
             // Same --llm/--llm-always fallback the build-log path applies
             // below — previously missing here entirely, so those flags were
@@ -374,7 +374,7 @@ struct Remediate: AsyncParsableCommand {
                 LogEntry(lineNumber: 0, level: .error,
                          message: "\(s.locationDescription): \(s.errorMessage)", raw: "")
             }
-            let result = RuleClassifier().classify(entries)
+            let result = XCResultCategoryFallback.apply(ruleResult: RuleClassifier().classify(entries), failureSites: sites)
             return (sites, result.category, result.confidence)
         }
 
