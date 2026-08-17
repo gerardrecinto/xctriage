@@ -92,4 +92,20 @@ final class ClassifierTests: XCTestCase {
         XCTAssertNotNil(result.suggestedFix)
         XCTAssertFalse(result.suggestedFix!.isEmpty)
     }
+
+    // "Test Case '...' failed" (testFailure, weight 0.95) and "no space left
+    // on device" (resourceExhaustion, weight 0.95) tie for the top weight.
+    // Regression: the reported category and the reported summary must come
+    // from the same rule. Verified empirically that a prior version could
+    // report .resourceExhaustion paired with the testFailure rule's summary
+    // text, because the category was picked via a Dictionary's unordered
+    // max(by:) separately from the rule the summary text came from.
+    func test_classify_tiedWeightRulesAcrossCategoriesStayConsistent() {
+        let entry = LogEntry(lineNumber: 1, level: .error,
+                             message: "Test Case 'FooTests.test_a' failed (0.10 seconds)\nerror: no space left on device", raw: "")
+        let result = classifier.classify([entry])
+
+        XCTAssertEqual(result.category, .testFailure)
+        XCTAssertEqual(result.summary, "XCTest case failed")
+    }
 }

@@ -148,21 +148,23 @@ public struct RuleClassifier: Sendable {
         let combined = entries.map(\.message).joined(separator: "\n")
         let range = NSRange(combined.startIndex..., in: combined)
 
-        var scores: [FailureCategory: Double] = [:]
+        // Track a single winning rule directly rather than a per-category
+        // score dictionary: a previous version picked the reported category
+        // from Dictionary.max(by:) separately from the rule used for the
+        // summary/fix text, and Dictionary iteration order isn't guaranteed
+        // to agree with this loop's array order. On a weight tie between two
+        // different categories, that let the reported category and the
+        // reported summary come from two different rules — verified
+        // empirically: category flipped between process runs while summary
+        // stayed fixed. Keeping one winning rule for everything closes that.
         var bestRule: ClassifierRule?
-
         for (regex, rule) in compiledRules where regex.firstMatch(in: combined, range: range) != nil {
-            let prev = scores[rule.category, default: 0]
-            if rule.weight > prev {
-                scores[rule.category] = rule.weight
-                if bestRule == nil || rule.weight > (bestRule?.weight ?? 0) {
-                    bestRule = rule
-                }
+            if bestRule == nil || rule.weight > (bestRule?.weight ?? 0) {
+                bestRule = rule
             }
         }
 
-        guard let topRule = bestRule,
-              let topCategory = scores.max(by: { $0.value < $1.value })?.key else {
+        guard let topRule = bestRule else {
             return ClassificationResult(
                 category: .unknown,
                 confidence: 0.0,
@@ -172,8 +174,8 @@ public struct RuleClassifier: Sendable {
         }
 
         return ClassificationResult(
-            category: topCategory,
-            confidence: scores[topCategory] ?? topRule.weight,
+            category: topRule.category,
+            confidence: topRule.weight,
             summary: topRule.summaryTemplate,
             suggestedFix: topRule.fixTemplate,
             llmUsed: false
