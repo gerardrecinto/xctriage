@@ -76,6 +76,7 @@ public struct GitHubPRWriter: Sendable {
 
         let diffPath = NSTemporaryDirectory() + "xctriage-pr-\(UUID().uuidString).diff"
         try proposal.unifiedDiff.write(toFile: diffPath, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: diffPath) }
 
         _ = try await exec(gitPath, ["apply", diffPath])
         _ = try await exec(gitPath, ["add", proposal.filePath])

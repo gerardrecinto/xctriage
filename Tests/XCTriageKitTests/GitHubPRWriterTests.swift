@@ -139,6 +139,61 @@ final class GitHubPRWriterTests: XCTestCase {
         }
     }
 
+    // MARK: - Temp diff file cleanup
+
+    private func capturedDiffPath(_ runner: RecordingRunner) -> String? {
+        runner.calls.first { $0.arguments.first == "apply" }?.arguments.last
+    }
+
+    func test_createDraftPR_removesTempDiffFileAfterSuccess() async throws {
+        let runner = RecordingRunner()
+        let writer = makeWriter(runner)
+
+        _ = try await writer.createDraftPR(
+            proposal: proposal(), fingerprint: fingerprint(), category: .compilationError,
+            failureSite: site(), sandboxResult: sandboxResult(), repoRoot: "/tmp/repo"
+        )
+
+        let diffPath = try XCTUnwrap(capturedDiffPath(runner))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: diffPath), "temp diff file leaked at \(diffPath)")
+    }
+
+    // Fails on the "push" step specifically, so apply/add/commit have already
+    // run and written the temp diff file by the time the error is thrown.
+    private final class FailAfterApplyRunner: @unchecked Sendable {
+        private(set) var calls: [RecordingRunner.Call] = []
+
+        func run(_ executable: String, _ arguments: [String], _ cwd: String) async throws -> (Int32, String) {
+            calls.append(RecordingRunner.Call(executable: executable, arguments: arguments, cwd: cwd))
+            if arguments.first == "push" {
+                return (1, "push failed")
+            }
+            return (0, "")
+        }
+    }
+
+    func test_createDraftPR_removesTempDiffFileWhenPushFails() async throws {
+        let failingRunner = FailAfterApplyRunner()
+        let writer = GitHubPRWriter(runCommand: failingRunner.run)
+
+        do {
+            _ = try await writer.createDraftPR(
+                proposal: proposal(), fingerprint: fingerprint(), category: .compilationError,
+                failureSite: site(), sandboxResult: sandboxResult(), repoRoot: "/tmp/repo"
+            )
+            XCTFail("expected push failure to throw")
+        } catch TriageError.remediationCommandFailed {
+            // expected
+        } catch {
+            XCTFail("expected TriageError.remediationCommandFailed, got \(error)")
+        }
+
+        let diffPath = try XCTUnwrap(
+            failingRunner.calls.first { $0.arguments.first == "apply" }?.arguments.last
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: diffPath), "temp diff file leaked at \(diffPath)")
+    }
+
     // MARK: - PR body shape (pure, no runner needed)
 
     func test_prBody_containsRequiredSectionsAndNoAIAttribution() {
