@@ -113,6 +113,56 @@ final class FlakyTestTrackerTests: XCTestCase {
         XCTAssertTrue(candidates.isEmpty)
     }
 
+    // MARK: recordAndScore
+    //
+    // The one entry point both of Analyze.run()'s input branches (build-log
+    // and .xcresult) should share: score first (against prior history, not
+    // this occurrence), then optionally record. A prior version of
+    // Analyze.run() only wired this sequence up for the build-log branch;
+    // the .xcresult branch never called into FlakyTestTracker at all, so
+    // .xcresult input silently never got tracked or scored.
+
+    func test_recordAndScore_emptyTestNamesReturnsEmptyWithoutRecording() async throws {
+        let tracker = try FlakyTestTracker(dbPath: dbPath)
+        let scores = await tracker.recordAndScore(testNames: [], buildID: "b1", source: "xcodebuild", alsoRecord: true)
+        XCTAssertTrue(scores.isEmpty)
+
+        let top = try await tracker.topFlaky(n: 10)
+        XCTAssertTrue(top.isEmpty)
+    }
+
+    func test_recordAndScore_scoresReflectPriorHistoryNotThisCall() async throws {
+        let tracker = try FlakyTestTracker(dbPath: dbPath)
+        try await tracker.record(testName: "Suite.test_flaky", buildID: "b1", source: "xcodebuild")
+
+        // A second call, for a new build, should score against the prior
+        // history only — not double-count the record this same call makes.
+        let scores = await tracker.recordAndScore(
+            testNames: ["Suite.test_flaky"], buildID: "b2", source: "xcodebuild", alsoRecord: true
+        )
+        XCTAssertEqual(scores["Suite.test_flaky"], 1.0)
+    }
+
+    func test_recordAndScore_alsoRecordFalseDoesNotPersist() async throws {
+        let tracker = try FlakyTestTracker(dbPath: dbPath)
+        _ = await tracker.recordAndScore(
+            testNames: ["Suite.test_a"], buildID: "b1", source: "xcodebuild", alsoRecord: false
+        )
+
+        let top = try await tracker.topFlaky(n: 10)
+        XCTAssertTrue(top.isEmpty, "alsoRecord: false must not persist a flaky_events row")
+    }
+
+    func test_recordAndScore_alsoRecordTruePersistsForEveryTestName() async throws {
+        let tracker = try FlakyTestTracker(dbPath: dbPath)
+        _ = await tracker.recordAndScore(
+            testNames: ["Suite.test_a", "Suite.test_b"], buildID: "b1", source: "xcodebuild", alsoRecord: true
+        )
+
+        let top = try await tracker.topFlaky(n: 10)
+        XCTAssertEqual(Set(top.map(\.name)), ["Suite.test_a", "Suite.test_b"])
+    }
+
     func test_scores_capsAtOneEvenWithMoreFailuresThanBuilds() async throws {
         // A test can only fail once per recorded build in normal usage, but the
         // score formula divides by distinct build_id count, so guard against

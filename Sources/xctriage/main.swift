@@ -83,11 +83,22 @@ struct Analyze: AsyncParsableCommand {
                 result.failureSites = sites
             }
 
+            // Same flaky-tracker recording/scoring the build-log path below
+            // does — previously missing here entirely (same shape as the
+            // --llm gap fixed above), so .xcresult input never got recorded
+            // into the flaky tracker and never showed flaky scores at all.
+            let xcresultTestNames = result.failureSites.compactMap(\.testName)
+            let flakyScores = await trackFlakiness(
+                testNames: xcresultTestNames, buildID: buildID,
+                source: CISource.xcresult.rawValue, db: db, noTrack: noTrack
+            )
+
             let duration = Date().timeIntervalSince(t0) * 1000
             let report = TriageReport(
                 buildID: buildID,
                 source: .xcresult,
                 classification: result,
+                flakyTestScores: flakyScores,
                 rawLogLines: entries.count,
                 durationMS: duration
             )
@@ -127,17 +138,10 @@ struct Analyze: AsyncParsableCommand {
 
         let duration = Date().timeIntervalSince(t0) * 1000
 
-        // Flaky tracking
-        var flakyScores: [String: Double] = [:]
         let testNames = result.failureSites.compactMap(\.testName)
-        if !testNames.isEmpty, let tracker = try? FlakyTestTracker(dbPath: db) {
-            flakyScores = (try? await tracker.scores(for: testNames)) ?? [:]
-            if !noTrack {
-                for name in testNames {
-                    try? await tracker.record(testName: name, buildID: buildID, source: ciSource.rawValue)
-                }
-            }
-        }
+        let flakyScores = await trackFlakiness(
+            testNames: testNames, buildID: buildID, source: ciSource.rawValue, db: db, noTrack: noTrack
+        )
 
         let report = TriageReport(
             buildID: buildID,
@@ -152,6 +156,16 @@ struct Analyze: AsyncParsableCommand {
         if exitCode && !result.failureSites.isEmpty {
             Foundation.exit(1)
         }
+    }
+
+    // Shared by both the .xcresult and build-log branches of run() so
+    // neither can silently skip flaky-test recording/scoring the way the
+    // .xcresult branch previously did.
+    private func trackFlakiness(
+        testNames: [String], buildID: String?, source: String, db: String, noTrack: Bool
+    ) async -> [String: Double] {
+        guard let tracker = try? FlakyTestTracker(dbPath: db) else { return [:] }
+        return await tracker.recordAndScore(testNames: testNames, buildID: buildID, source: source, alsoRecord: !noTrack)
     }
 
     private func emitReport(_ report: TriageReport) async throws {

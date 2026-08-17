@@ -87,6 +87,24 @@ public actor FlakyTestTracker {
         try topFlaky(n: limit).filter { $0.score > threshold }
     }
 
+    // The one entry point callers with an optional --no-track flag should
+    // use: score against prior history first, then optionally persist this
+    // occurrence, so the two operations can't be wired up separately (and
+    // inconsistently) at each call site. Swallows its own errors, matching
+    // how callers already treated `scores`/`record` failures as non-fatal.
+    public func recordAndScore(
+        testNames: [String], buildID: String?, source: String, alsoRecord: Bool
+    ) async -> [String: Double] {
+        guard !testNames.isEmpty else { return [:] }
+        let result = (try? scores(for: testNames)) ?? [:]
+        if alsoRecord {
+            for name in testNames {
+                try? record(testName: name, buildID: buildID, source: source)
+            }
+        }
+        return result
+    }
+
     public func topFlaky(n: Int = 10) throws -> [(name: String, score: Double)] {
         let cutoff = cutoffDate()
         let sql = """
