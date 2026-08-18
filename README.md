@@ -294,6 +294,12 @@ xctriage analyze xcbuild.log --source xcodebuild --output json | jq .classificat
 xctriage analyze xcbuild.log --source xcodebuild \
   --output slack --slack-webhook https://hooks.slack.com/...
 
+# SARIF 2.1.0 (upload to GitHub code scanning, or any other SARIF consumer)
+xctriage analyze xcbuild.log --source xcodebuild --output sarif > results.sarif
+
+# GitHub Actions annotations (::error/::warning workflow commands, no network/LLM needed)
+xctriage analyze xcbuild.log --source xcodebuild --output github
+
 # Show top flaky tests
 xctriage flaky --n 20
 

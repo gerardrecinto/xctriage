@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `xctriage analyze --output sarif`: SARIF 2.1.0 output (`SARIFReporter`), one result per `FailureSite` with a stable `ruleId` derived from `FailureCategory`, a `level` derived from category + classifier confidence, and a `partialFingerprints` entry reusing the existing `FailureFingerprint` type so the same failure fingerprints identically across reruns. `locations` (`physicalLocation`/`region`) are only emitted when a real file/line is known; never fabricated.
+- `xctriage analyze --output github`: GitHub Actions workflow-command annotations (`GitHubReporter`) — `::error file=...,line=...,col=...::message` / `::warning ...::`, one line per `FailureSite`, with GitHub's documented `%`/`\r`/`\n`/`:`/`,` escaping applied. Pure formatting over the existing `TriageReport`; no network access, no LLM.
+- `AnnotationMapping`: shared `FailureCategory` → ruleId/severity mapping used by both new reporters, so SARIF and GitHub annotations agree on what counts as an error vs. a warning for a given category.
+
 ## v1.4.1
 
 ### Fixed
