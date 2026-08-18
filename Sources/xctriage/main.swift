@@ -37,7 +37,7 @@ struct Analyze: AsyncParsableCommand {
     @Option(name: .long, help: "Confidence threshold for LLM fallback (default: 0.60)")
     var llmThreshold: Double = 0.60
 
-    @Option(name: .shortAndLong, help: "Output format: terminal | json | slack")
+    @Option(name: .shortAndLong, help: "Output format: terminal | json | slack | sarif | github")
     var output: String = "terminal"
 
     @Option(name: .long, help: "Slack webhook URL (or set XCTRIAGE_SLACK_WEBHOOK)")
@@ -172,6 +172,10 @@ struct Analyze: AsyncParsableCommand {
         switch output {
         case "json":
             try JSONReporter().report(report)
+        case "sarif":
+            try SARIFReporter().report(report)
+        case "github":
+            GitHubReporter().report(report)
         case "slack":
             let urlStr = slackWebhook ?? ProcessInfo.processInfo.environment["XCTRIAGE_SLACK_WEBHOOK"] ?? ""
             guard let url = URL(string: urlStr), !urlStr.isEmpty else {
