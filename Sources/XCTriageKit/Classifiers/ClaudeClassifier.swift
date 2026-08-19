@@ -35,22 +35,33 @@ public actor ClaudeClassifier {
     }
 
     public func classify(_ entries: [LogEntry]) async throws -> ClassificationResult {
-        let logText = truncated(entries)
-        let requestBody = try buildRequest(logText: logText)
+        try await classify(promptText: Self.buildPromptText(entries))
+    }
+
+    // Entry point for callers that already have the exact text to send —
+    // notably `xctriage analyze --redact`, which needs to run the log
+    // through Redactor before it reaches this actor at all, and
+    // `--dry-run-prompt`, which needs to preview that same text without
+    // ever calling post().
+    public func classify(promptText: String) async throws -> ClassificationResult {
+        let requestBody = try buildRequest(logText: promptText)
         let responseData = try await post(requestBody)
         return try parse(responseData)
     }
 
-    // MARK: - Private
-
-    private func truncated(_ entries: [LogEntry]) -> String {
+    // Same truncation this actor sends over the wire, exposed as a pure
+    // static function so `--dry-run-prompt` can show a caller exactly what
+    // would be transmitted without needing an API key or making a request.
+    public static func buildPromptText(_ entries: [LogEntry]) -> String {
         let text = entries.map(\.message).joined(separator: "\n")
-        guard text.count > Self.maxLogChars else { return text }
-        let half = Self.maxLogChars / 2
+        guard text.count > maxLogChars else { return text }
+        let half = maxLogChars / 2
         let start = text.prefix(half)
         let end = text.suffix(half)
         return "\(start)\n...[truncated]...\n\(end)"
     }
+
+    // MARK: - Private
 
     private func buildRequest(logText: String) throws -> Data {
         let body: [String: Any] = [
