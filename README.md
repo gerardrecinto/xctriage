@@ -4,7 +4,7 @@
 ![Release](https://github.com/gerardrecinto/xctriage/actions/workflows/release.yml/badge.svg)
 ![Swift](https://img.shields.io/badge/Swift-6.0-orange?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-47%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-203%20passed-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 ![Claude](https://img.shields.io/badge/Claude-Sonnet_5-orange?logo=anthropic&logoColor=white)
 
@@ -305,7 +305,22 @@ xctriage flaky --n 20
 
 # Exit with code 1 on failure: use in CI pipelines to gate merges
 xctriage analyze xcbuild.log --source xcodebuild --exit-code
+
+# Strip secrets/PII before the log reaches Claude
+xctriage analyze xcbuild.log --source xcodebuild --llm --redact --redaction-report
+
+# See exactly what would be sent to Claude, without calling the API
+xctriage analyze xcbuild.log --source xcodebuild --llm --redact --dry-run-prompt
+
+# Standalone redaction, independent of --llm — pipe any file/log through it
+xctriage redact xcbuild.log --report
 ```
+
+### Privacy: redaction before the LLM boundary
+
+`--redact` runs the log through a deterministic regex-based scrubber (`Redactor`, no LLM involved) before it reaches `ClaudeClassifier`: GitHub/Slack/Anthropic/OpenAI tokens, AWS access keys, private key blocks, JWTs, bearer tokens, credentials embedded in URLs, `KEY=value`-style secrets from CI environment dumps, `/Users/<name>` home paths, and email addresses (opt out per-run with `xctriage redact --keep-emails`). `--redaction-report` shows what was stripped without ever printing the actual secret. `--dry-run-prompt` prints the exact text that would leave the machine and exits before any network call, so you can check it before wiring `--llm` into CI at all.
+
+This only ever touches the text sent to the failure-classification call. `xctriage remediate` sends real file contents to Claude to generate a patch — that path is intentionally left alone, because a patch has to apply against the byte-for-byte real source or sandbox validation rejects it.
 
 ### CI gate mode with `--exit-code`
 
@@ -324,7 +339,7 @@ xctriage analyze build.log --source xcodebuild --exit-code
 ## Tests
 
 ```bash
-swift test                          # 164 tests
+swift test                          # 203 tests
 swift test --enable-code-coverage   # with coverage
 swift build -c release              # build binary
 bash scripts/make_demo.sh           # run demo fixtures

@@ -2,13 +2,24 @@ import ArgumentParser
 import XCTriageKit
 import Foundation
 
+// Shared by `xctriage redact` and `analyze --redact --redaction-report` so
+// the two commands can't drift into printing different summary formats.
+private func printRedactionSummary(_ redaction: RedactionResult) {
+    guard !redaction.matches.isEmpty else {
+        FileHandle.standardError.write(Data("redaction: nothing matched\n".utf8))
+        return
+    }
+    let summary = redaction.reportLines.joined(separator: ", ")
+    FileHandle.standardError.write(Data("redacted \(redaction.totalRedactions) item(s): \(summary)\n".utf8))
+}
+
 @main
 struct XCTriage: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "xctriage",
         abstract: "AI-powered CI failure analysis for Apple platforms",
         version: "1.4.1",
-        subcommands: [Analyze.self, Flaky.self, Remediate.self]
+        subcommands: [Analyze.self, Flaky.self, Remediate.self, Redact.self]
     )
 }
 
@@ -52,6 +63,15 @@ struct Analyze: AsyncParsableCommand {
     @Flag(name: .long, help: "Exit 1 when a failure is detected (CI gate mode)")
     var exitCode: Bool = false
 
+    @Flag(name: .long, help: "Strip secrets/PII from the log before it reaches Claude (only affects the --llm request, not local rule-based output)")
+    var redact: Bool = false
+
+    @Flag(name: .long, help: "Print the exact text that would be sent to Claude and exit, without calling the API")
+    var dryRunPrompt: Bool = false
+
+    @Flag(name: .long, help: "With --redact, print what was stripped (category + count) to stderr")
+    var redactionReport: Bool = false
+
     mutating func run() async throws {
         let t0 = Date()
 
@@ -67,18 +87,23 @@ struct Analyze: AsyncParsableCommand {
                 LogEntry(lineNumber: 0, level: .error,
                          message: "\(s.locationDescription): \(s.errorMessage)", raw: "")
             }
+
+            if dryRunPrompt {
+                Self.printDryRunPrompt(entries, redact: redact, showReport: redactionReport)
+                return
+            }
+
             var result = XCResultCategoryFallback.apply(ruleResult: RuleClassifier().classify(entries), failureSites: sites)
 
             // Same --llm/--llm-always fallback the build-log path applies
             // below — previously missing here entirely, so those flags were
             // silently ignored for .xcresult input.
             let apiKey = ProcessInfo.processInfo.environment["XCTRIAGE_ANTHROPIC_API_KEY"] ?? ""
-            if LLMFallbackPolicy.shouldUseLLM(
-                hasAPIKey: !apiKey.isEmpty, llmAlways: llmAlways, llmRequested: llm,
-                confidence: result.confidence, threshold: llmThreshold
-            ) {
-                result = try await ClaudeClassifier(apiKey: apiKey).classify(entries)
-            }
+            result = try await Self.applyLLMFallback(
+                ruleResult: result, entries: entries, apiKey: apiKey,
+                llmAlways: llmAlways, llmRequested: llm, llmThreshold: llmThreshold,
+                redact: redact, redactionReport: redactionReport
+            )
             if result.failureSites.isEmpty {
                 result.failureSites = sites
             }
@@ -119,17 +144,20 @@ struct Analyze: AsyncParsableCommand {
         let entries = parser.parse(logText)
         let context = parser.extractFailureContext(entries)
 
+        if dryRunPrompt {
+            Self.printDryRunPrompt(context, redact: redact, showReport: redactionReport)
+            return
+        }
+
         var result = RuleClassifier().classify(context)
 
         // LLM fallback — same LLMFallbackPolicy.shouldUseLLM the .xcresult branch above uses.
         let apiKey = ProcessInfo.processInfo.environment["XCTRIAGE_ANTHROPIC_API_KEY"] ?? ""
-        if LLMFallbackPolicy.shouldUseLLM(
-            hasAPIKey: !apiKey.isEmpty, llmAlways: llmAlways, llmRequested: llm,
-            confidence: result.confidence, threshold: llmThreshold
-        ) {
-            let classifier = ClaudeClassifier(apiKey: apiKey)
-            result = try await classifier.classify(context)
-        }
+        result = try await Self.applyLLMFallback(
+            ruleResult: result, entries: context, apiKey: apiKey,
+            llmAlways: llmAlways, llmRequested: llm, llmThreshold: llmThreshold,
+            redact: redact, redactionReport: redactionReport
+        )
 
         // Merge failure sites from parser if classifier has none
         if result.failureSites.isEmpty {
@@ -166,6 +194,48 @@ struct Analyze: AsyncParsableCommand {
     ) async -> [String: Double] {
         guard let tracker = try? FlakyTestTracker(dbPath: db) else { return [:] }
         return await tracker.recordAndScore(testNames: testNames, buildID: buildID, source: source, alsoRecord: !noTrack)
+    }
+
+    // Shared by both the .xcresult and build-log branches of run() — same
+    // reasoning as trackFlakiness above: duplicating this per-branch is
+    // exactly how --llm silently got dropped for .xcresult input before
+    // LLMFallbackPolicy existed.
+    private static func applyLLMFallback(
+        ruleResult: ClassificationResult,
+        entries: [LogEntry],
+        apiKey: String,
+        llmAlways: Bool,
+        llmRequested: Bool,
+        llmThreshold: Double,
+        redact: Bool,
+        redactionReport: Bool
+    ) async throws -> ClassificationResult {
+        guard LLMFallbackPolicy.shouldUseLLM(
+            hasAPIKey: !apiKey.isEmpty, llmAlways: llmAlways, llmRequested: llmRequested,
+            confidence: ruleResult.confidence, threshold: llmThreshold
+        ) else {
+            return ruleResult
+        }
+
+        let classifier = ClaudeClassifier(apiKey: apiKey)
+        guard redact else {
+            return try await classifier.classify(entries)
+        }
+
+        let redaction = Redactor().redact(ClaudeClassifier.buildPromptText(entries))
+        if redactionReport { printRedactionSummary(redaction) }
+        return try await classifier.classify(promptText: redaction.redactedText)
+    }
+
+    private static func printDryRunPrompt(_ entries: [LogEntry], redact: Bool, showReport: Bool) {
+        let raw = ClaudeClassifier.buildPromptText(entries)
+        guard redact else {
+            print(raw)
+            return
+        }
+        let redaction = Redactor().redact(raw)
+        print(redaction.redactedText)
+        if showReport { printRedactionSummary(redaction) }
     }
 
     private func emitReport(_ report: TriageReport) async throws {
@@ -527,5 +597,38 @@ struct Flaky: AsyncParsableCommand {
                 print()
             }
         }
+    }
+}
+
+// MARK: redact
+
+struct Redact: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Print a log or file with secrets/PII stripped — standalone, independent of --llm"
+    )
+
+    @Argument(help: "File path (- for stdin)")
+    var input: String = "-"
+
+    @Flag(name: .long, help: "Keep email addresses unredacted")
+    var keepEmails: Bool = false
+
+    @Flag(name: .long, help: "Print a summary of what was redacted (category + count) to stderr")
+    var report: Bool = false
+
+    mutating func run() throws {
+        let text: String
+        if input == "-" {
+            text = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        } else {
+            guard let contents = try? String(contentsOfFile: input, encoding: .utf8) else {
+                throw TriageError.fileNotFound(input)
+            }
+            text = contents
+        }
+
+        let result = Redactor(redactEmails: !keepEmails).redact(text)
+        print(result.redactedText)
+        if report { printRedactionSummary(result) }
     }
 }

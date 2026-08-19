@@ -142,4 +142,63 @@ final class ClaudeClassifierTests: XCTestCase {
 
         XCTAssertEqual(result.category, .unknown)
     }
+
+    // MARK: - promptText / redaction boundary
+
+    func test_classifyPromptText_sendsExactTextGiven() async throws {
+        let payload: [String: Any] = [
+            "content": [["type": "text", "text": "{\"category\":\"timeout\",\"confidence\":0.7,\"summary\":\"slow\"}"]]
+        ]
+        StubURLProtocol.responseData = try JSONSerialization.data(withJSONObject: payload)
+        StubURLProtocol.statusCode = 200
+        StubURLProtocol.capturedRequestBody = nil
+
+        let classifier = ClaudeClassifier(apiKey: "test-key", session: stubbedSession())
+        _ = try await classifier.classify(promptText: "hand-built prompt text")
+
+        let body = try XCTUnwrap(StubURLProtocol.capturedRequestBody)
+        let sent = try XCTUnwrap(String(data: body, encoding: .utf8))
+        XCTAssertTrue(sent.contains("hand-built prompt text"))
+    }
+
+    func test_classify_redactedSecretNeverReachesTheRequestBody() async throws {
+        let payload: [String: Any] = [
+            "content": [["type": "text", "text": "{\"category\":\"infra_failure\",\"confidence\":0.8,\"summary\":\"leaked token\"}"]]
+        ]
+        StubURLProtocol.responseData = try JSONSerialization.data(withJSONObject: payload)
+        StubURLProtocol.statusCode = 200
+        StubURLProtocol.capturedRequestBody = nil
+
+        let secretLog = "error: auth failed with token ghp_ABCDEFGHIJ0123456789abcdefghij0123"
+        let redaction = Redactor().redact(secretLog)
+        XCTAssertFalse(redaction.matches.isEmpty)
+
+        let classifier = ClaudeClassifier(apiKey: "test-key", session: stubbedSession())
+        _ = try await classifier.classify(promptText: redaction.redactedText)
+
+        let body = try XCTUnwrap(StubURLProtocol.capturedRequestBody)
+        let sent = try XCTUnwrap(String(data: body, encoding: .utf8))
+        XCTAssertFalse(sent.contains("ghp_ABCDEFGHIJ0123456789abcdefghij0123"))
+        XCTAssertTrue(sent.contains("[REDACTED:github-token]"))
+    }
+
+    func test_buildPromptText_matchesWhatClassifySends() async throws {
+        let payload: [String: Any] = [
+            "content": [["type": "text", "text": "{\"category\":\"timeout\",\"confidence\":0.7,\"summary\":\"slow\"}"]]
+        ]
+        StubURLProtocol.responseData = try JSONSerialization.data(withJSONObject: payload)
+        StubURLProtocol.statusCode = 200
+        StubURLProtocol.capturedRequestBody = nil
+
+        let entries = [LogEntry(lineNumber: 1, level: .error, message: "distinctive marker line", raw: "")]
+        let preview = ClaudeClassifier.buildPromptText(entries)
+        XCTAssertEqual(preview, "distinctive marker line")
+
+        let classifier = ClaudeClassifier(apiKey: "test-key", session: stubbedSession())
+        _ = try await classifier.classify(entries)
+
+        let body = try XCTUnwrap(StubURLProtocol.capturedRequestBody)
+        let sent = try XCTUnwrap(String(data: body, encoding: .utf8))
+        XCTAssertTrue(sent.contains(preview))
+    }
 }
