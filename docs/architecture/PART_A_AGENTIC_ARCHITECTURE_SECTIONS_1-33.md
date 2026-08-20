@@ -4,7 +4,7 @@ This document is a target-architecture design review: what xctriage's
 agentic and auto-remediation layer could grow into, not a description of
 infrastructure that exists today. See the repo root `README.md` for what
 is actually built and tested right now (`BuildLogParser`/`XCResultParser`,
-a 17-rule `RuleClassifier` across 7 categories, a `ClaudeClassifier`
+a 19-rule `RuleClassifier` across 8 categories, a `ClaudeClassifier`
 fallback, a `FlakyTestTracker`, `FailureFingerprint`, a two-gate
 `RemediationPolicy`, `PatchGenerator`, `SandboxValidator`, and the
 `remediate` CLI subcommand wiring all of it together, with 76 passing
@@ -37,7 +37,7 @@ exist in the repo today.
 3. xctriage generates a deterministic fingerprint. (MEASURED, via
    `FailureFingerprint` - SHA256 over category + file + test + normalized
    message, truncated to 16 hex chars.)
-4. The platform classifies the failure into one of 7 categories. (MEASURED,
+4. The platform classifies the failure into one of 8 categories. (MEASURED,
    via `RuleClassifier`, with `ClaudeClassifier` as a confidence-gated
    fallback.)
 5. Failures are correlated against fingerprint history to suppress
