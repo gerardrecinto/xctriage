@@ -1,11 +1,21 @@
 # Changelog
 
-## Unreleased
+## v1.6.0
+
+### Fixed
+- CHANGELOG still had SARIF/GitHub-annotation output and the redaction pipeline filed under `## Unreleased` after both had already shipped in the `v1.5.0` tag/release — a stale doc claim, not an actual code gap. Moved that content under `## v1.5.0` below, where it belongs.
+- A Swift runtime crash (`fatalError`/`precondition`/an unguarded force-unwrap trap, `EXC_BAD_ACCESS`, `SIGABRT`, or a sanitizer report) matched none of `BuildLogParser`'s patterns, so `detectLevel` returned `nil` and `extractFailureContext` dropped the line entirely. Reproduced empirically with a synthetic xcodebuild log containing a Swift stdlib trap: `xctriage analyze` reported `UNKNOWN` at 0% confidence with zero failure sites, even though the crash message and its `file:line` were sitting right there in the log — the tool's core "root cause in under a second" claim silently didn't apply to the single most common way an Apple CI test run dies. This is a real gap, not a hypothetical: a crashed process usually never gets the chance to log a `Test Case '...' failed` line before it dies, so nothing else in the classifier had a signal to work with either.
+
+### Added
+- New `runtime_crash` failure category (`FailureCategory.runtimeCrash`). `BuildLogParser` now recognizes Swift's stdlib trap format (`file.swift:N: Fatal error|Precondition failed|Assertion failed: message`, with file/line extracted into the `FailureSite`) and fatal-signal/sanitizer lines with no file:line to key on (`EXC_BAD_ACCESS`, `EXC_BREAKPOINT`, `EXC_CRASH`, `SIGABRT`/`SIGSEGV`/`SIGILL`, `libc++abi`, AddressSanitizer/ThreadSanitizer/UndefinedBehaviorSanitizer reports), deduped the same way the existing linker-error branch is. Three new `RuleClassifier` rules back it (weights 0.88-0.94, sanitizer reports weighted highest since they're the least ambiguous diagnosis of the three). Wired into `TerminalReporter` (red, `☠`) and `AnnotationMapping` (SARIF/GitHub annotations both treat it as an error-level category), so every existing output format picks it up with no format-specific changes needed.
+
+## v1.5.0
 
 ### Added
 - `xctriage analyze --output sarif`: SARIF 2.1.0 output (`SARIFReporter`), one result per `FailureSite` with a stable `ruleId` derived from `FailureCategory`, a `level` derived from category + classifier confidence, and a `partialFingerprints` entry reusing the existing `FailureFingerprint` type so the same failure fingerprints identically across reruns. `locations` (`physicalLocation`/`region`) are only emitted when a real file/line is known; never fabricated.
 - `xctriage analyze --output github`: GitHub Actions workflow-command annotations (`GitHubReporter`) — `::error file=...,line=...,col=...::message` / `::warning ...::`, one line per `FailureSite`, with GitHub's documented `%`/`\r`/`\n`/`:`/`,` escaping applied. Pure formatting over the existing `TriageReport`; no network access, no LLM.
 - `AnnotationMapping`: shared `FailureCategory` → ruleId/severity mapping used by both new reporters, so SARIF and GitHub annotations agree on what counts as an error vs. a warning for a given category.
+- `xctriage redact` / `--redact` / `--redaction-report` / `--dry-run-prompt`: a deterministic regex-based scrubber (`Redactor`) strips GitHub/Slack/Anthropic/OpenAI tokens, AWS keys, private key blocks, JWTs, bearer tokens, credentials in URLs, `KEY=value` CI env dumps, home paths, and emails from the text sent to Claude, independent of the `--llm` request itself. `--dry-run-prompt` prints the exact text that would leave the machine without calling the API.
 
 ## v1.4.1
 
