@@ -36,6 +36,7 @@ enum FailureCategoryMapping {
         case .infraFailure:       return "xctriage/infra/failure"
         case .dependencyFailure:  return "xctriage/dependency/failure"
         case .timeout:            return "xctriage/infra/timeout"
+        case .runtimeCrash:       return "xctriage/runtime/crash"
         case .unknown:            return "xctriage/unknown"
         }
     }

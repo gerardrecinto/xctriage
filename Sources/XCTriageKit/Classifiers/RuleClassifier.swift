@@ -128,6 +128,30 @@ internal let defaultRules: [ClassifierRule] = [
         summaryTemplate: "Build or test timed out",
         fixTemplate: "Increase timeout with `xcodebuild -timeout` flag. Split large test suites across parallel destinations with `-parallel-testing-enabled YES`."
     ),
+    // Runtime crashes: a Swift trap or a fatal OS signal killed the process
+    // mid-test, so there's often no "Test Case ... failed" line at all —
+    // XCTest never gets the chance to log one before the process dies.
+    ClassifierRule(
+        pattern: #"(?i)(fatal error:|precondition failed:|assertion failed:)"#,
+        category: .runtimeCrash, weight: 0.90,
+        summaryTemplate: "Runtime crash: Swift trap (fatalError/precondition/assertion)",
+        fixTemplate: "Reproduce locally under the debugger at the reported file:line. Guard the force-unwrap"
+            + " or precondition, or fail the test explicitly instead of trapping the process."
+    ),
+    ClassifierRule(
+        pattern: #"(?i)(EXC_BAD_ACCESS|EXC_BREAKPOINT|EXC_CRASH|signal SIGABRT|signal SIGSEGV|signal SIGILL|libc\+\+abi)"#,
+        category: .runtimeCrash, weight: 0.88,
+        summaryTemplate: "Runtime crash: process received a fatal signal",
+        fixTemplate: "Symbolicate the crash log with the matching dSYM and inspect the crashing thread for a"
+            + " use-after-free or force-unwrap. Re-run under Address Sanitizer to catch memory corruption earlier."
+    ),
+    ClassifierRule(
+        pattern: #"(?i)(AddressSanitizer:|ThreadSanitizer:|UndefinedBehaviorSanitizer:)"#,
+        category: .runtimeCrash, weight: 0.94,
+        summaryTemplate: "Sanitizer-detected memory or concurrency error",
+        fixTemplate: "Read the sanitizer report's allocation/access stack traces — this is a real bug, not CI"
+            + " flakiness. Do not retry without fixing the underlying race or memory error."
+    ),
 ]
 
 public struct RuleClassifier: Sendable {

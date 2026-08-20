@@ -23,6 +23,18 @@ public struct BuildLogParser: Sendable {
     private static let genericErrorRE = try! NSRegularExpression(
         pattern: #"(?i)^error:\s+(.+)"#)
 
+    // Swift runtime trap, printed by the stdlib as `file:line: Fatal error: message`
+    // (also covers `Precondition failed:` / `Assertion failed:`, same shape).
+    private static let fatalErrorRE = try! NSRegularExpression(
+        pattern: #"^(.+\.swift):(\d+): (?:Fatal error|Precondition failed|Assertion failed):\s*(.+)$"#)
+
+    // Fatal OS signal / sanitizer report with no file:line to key on — this
+    // is what actually appears on the console when a process dies mid-test,
+    // often with no "Test Case ... failed" line at all.
+    private static let crashSignalRE = try! NSRegularExpression(
+        pattern: #"(?i)(EXC_BAD_ACCESS|EXC_BREAKPOINT|EXC_CRASH|signal SIGABRT|signal SIGSEGV|signal SIGILL"#
+            + #"|libc\+\+abi|AddressSanitizer:|ThreadSanitizer:|UndefinedBehaviorSanitizer:)"#)
+
     public init() {}
 
     public func parse(_ logText: String) -> [LogEntry] {
@@ -56,6 +68,8 @@ public struct BuildLogParser: Sendable {
         if Self.linkerErrorRE.firstMatch(in: line, range: range) != nil { return .error }
         if Self.genericErrorRE.firstMatch(in: line, range: range) != nil { return .error }
         if Self.testFailRE.firstMatch(in: line, range: range) != nil { return .error }
+        if Self.fatalErrorRE.firstMatch(in: line, range: range) != nil { return .error }
+        if Self.crashSignalRE.firstMatch(in: line, range: range) != nil { return .error }
         return nil
     }
 
@@ -120,6 +134,31 @@ public struct BuildLogParser: Sendable {
                 if seen.insert(key).inserted {
                     sites.append(FailureSite(file: nil, line: nil, column: nil,
                                              testName: nil, errorMessage: "linker: \(msg ?? "")"))
+                }
+                continue
+            }
+            // Swift runtime trap with a file:line the stdlib printed itself
+            // (`file.swift:N: Fatal error: message`) — dedup on file:line,
+            // same as the compiler-error branch above.
+            if let m = Self.fatalErrorRE.firstMatch(in: raw, range: rawRange) {
+                let file = strAt(raw, m.range(at: 1))
+                let line = intAt(raw, m.range(at: 2))
+                let msg  = strAt(raw, m.range(at: 3))
+                let key  = "crash:\(file ?? ""):\(line ?? 0)"
+                if seen.insert(key).inserted {
+                    sites.append(FailureSite(file: file, line: line, column: nil,
+                                             testName: nil, errorMessage: msg ?? ""))
+                }
+                continue
+            }
+            // Fatal OS signal / sanitizer line with no file:line available.
+            // Dedup on the message itself, same reasoning as the linker branch.
+            if let m = Self.crashSignalRE.firstMatch(in: entry.message, range: msgRange) {
+                let msg = strAt(entry.message, m.range(at: 0))
+                let key = "signal:\(entry.message)"
+                if seen.insert(key).inserted {
+                    sites.append(FailureSite(file: nil, line: nil, column: nil,
+                                             testName: nil, errorMessage: msg ?? entry.message))
                 }
             }
         }

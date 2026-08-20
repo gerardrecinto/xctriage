@@ -103,7 +103,7 @@ public struct TerminalReporter: Sendable {
 
     private func categoryColor(_ category: FailureCategory) -> ANSIColor {
         switch category {
-        case .compilationError, .resourceExhaustion, .infraFailure: return .red
+        case .compilationError, .resourceExhaustion, .infraFailure, .runtimeCrash: return .red
         case .testFailure, .dependencyFailure, .timeout: return .yellow
         case .flakyTest: return .magenta
         case .unknown: return .cyan
@@ -117,6 +117,7 @@ public struct TerminalReporter: Sendable {
         case .resourceExhaustion, .infraFailure: return "!"
         case .dependencyFailure: return "?"
         case .timeout: return "T"
+        case .runtimeCrash: return "☠"
         case .unknown: return "?"
         }
     }

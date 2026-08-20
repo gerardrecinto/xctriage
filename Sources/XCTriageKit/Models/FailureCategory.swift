@@ -6,6 +6,7 @@ public enum FailureCategory: String, Sendable, Hashable, CaseIterable, Codable {
     case infraFailure       = "infra_failure"
     case dependencyFailure  = "dependency_failure"
     case timeout            = "timeout"
+    case runtimeCrash       = "runtime_crash"
     case unknown            = "unknown"
 
     public var displayName: String {
@@ -17,6 +18,7 @@ public enum FailureCategory: String, Sendable, Hashable, CaseIterable, Codable {
         case .infraFailure:       return "INFRA FAILURE"
         case .dependencyFailure:  return "DEPENDENCY FAILURE"
         case .timeout:            return "TIMEOUT"
+        case .runtimeCrash:       return "RUNTIME CRASH"
         case .unknown:            return "UNKNOWN"
         }
     }

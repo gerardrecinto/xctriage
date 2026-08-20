@@ -100,6 +100,55 @@ final class BuildLogParserTests: XCTestCase {
         XCTAssertEqual(testSites.count, 1)
     }
 
+    // MARK: runtime crash
+
+    func test_parse_detectsSwiftFatalErrorAsErrorLevel() {
+        // Before this rule existed, a Swift stdlib trap (`file:line: Fatal
+        // error: message`) matched none of BuildLogParser's patterns, so
+        // detectLevel returned nil and extractFailureContext dropped the
+        // line entirely — a crashed test produced UNKNOWN with 0 failure
+        // sites even though the crash message was right there in the log.
+        let entries = parser.parse("/repo/MediaDecoder.swift:142: Fatal error: Unexpectedly found nil while unwrapping an Optional value")
+        XCTAssertEqual(entries[0].level, .error)
+    }
+
+    func test_parse_detectsCrashSignalAsErrorLevel() {
+        let entries = parser.parse("Thread 1: EXC_BAD_ACCESS (code=1, address=0x0)")
+        XCTAssertEqual(entries[0].level, .error)
+    }
+
+    func test_extractFailureSites_swiftFatalErrorHasFileAndLine() {
+        let log = "/repo/MediaDecoder.swift:142: Fatal error: Unexpectedly found nil while unwrapping an Optional value"
+        let entries = parser.parse(log)
+        let context = parser.extractFailureContext(entries)
+        let sites = parser.extractFailureSites(context)
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertEqual(sites[0].file, "/repo/MediaDecoder.swift")
+        XCTAssertEqual(sites[0].line, 142)
+        XCTAssertEqual(sites[0].errorMessage, "Unexpectedly found nil while unwrapping an Optional value")
+    }
+
+    func test_extractFailureSites_crashSignalHasNoFileButHasMessage() {
+        let log = "Thread 1: EXC_BAD_ACCESS (code=1, address=0x0)"
+        let entries = parser.parse(log)
+        let context = parser.extractFailureContext(entries)
+        let sites = parser.extractFailureSites(context)
+        XCTAssertEqual(sites.count, 1)
+        XCTAssertNil(sites[0].file)
+        XCTAssertTrue(sites[0].errorMessage.contains("EXC_BAD_ACCESS"))
+    }
+
+    func test_extractFailureSites_dedupsRepeatedCrashSignal() {
+        let log = """
+        Thread 1: EXC_BAD_ACCESS (code=1, address=0x0)
+        Thread 1: EXC_BAD_ACCESS (code=1, address=0x0)
+        """
+        let entries = parser.parse(log)
+        let context = parser.extractFailureContext(entries)
+        let sites = parser.extractFailureSites(context)
+        XCTAssertEqual(sites.count, 1)
+    }
+
     func test_parse_emptyLog() {
         let entries = parser.parse("")
         XCTAssertEqual(entries.count, 1, "Empty string yields one empty entry")

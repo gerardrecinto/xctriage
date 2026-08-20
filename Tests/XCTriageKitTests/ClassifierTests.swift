@@ -93,6 +93,45 @@ final class ClassifierTests: XCTestCase {
         XCTAssertFalse(result.suggestedFix!.isEmpty)
     }
 
+    func test_classify_swiftFatalError() {
+        let entry = LogEntry(lineNumber: 1, level: .error,
+                             message: "Fatal error: Unexpectedly found nil while unwrapping an Optional value", raw: "")
+        let result = classifier.classify([entry])
+        XCTAssertEqual(result.category, .runtimeCrash)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.85)
+    }
+
+    func test_classify_execBadAccessCrash() {
+        let entry = LogEntry(lineNumber: 1, level: .error,
+                             message: "Thread 1: EXC_BAD_ACCESS (code=1, address=0x0)", raw: "")
+        let result = classifier.classify([entry])
+        XCTAssertEqual(result.category, .runtimeCrash)
+    }
+
+    func test_classify_addressSanitizerReport() {
+        let entry = LogEntry(lineNumber: 1, level: .error,
+                             message: "AddressSanitizer: heap-buffer-overflow on address 0x602000000010", raw: "")
+        let result = classifier.classify([entry])
+        XCTAssertEqual(result.category, .runtimeCrash)
+        // Sanitizer reports are the most certain diagnosis of the three
+        // runtime-crash rules — a real memory bug, not a symptom to guess at.
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.90)
+    }
+
+    // A crashed process rarely gets the chance to log "Test Case '...' failed"
+    // before it dies, so this must classify correctly from the crash text
+    // alone, with no test-failure line anywhere in the log.
+    func test_classify_crashWithoutTestFailedLine() {
+        let log = """
+        Test Case '-[MediaTests testDecodeFrame]' started.
+        /Users/ci/repo/Sources/MediaDecoder.swift:142: Fatal error: Unexpectedly found nil while unwrapping an Optional value
+        """
+        let entries = parser.parse(log)
+        let context = parser.extractFailureContext(entries)
+        let result = classifier.classify(context)
+        XCTAssertEqual(result.category, .runtimeCrash)
+    }
+
     // "Test Case '...' failed" (testFailure, weight 0.95) and "no space left
     // on device" (resourceExhaustion, weight 0.95) tie for the top weight.
     // Regression: the reported category and the reported summary must come

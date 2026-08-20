@@ -4,7 +4,7 @@
 ![Release](https://github.com/gerardrecinto/xctriage/actions/workflows/release.yml/badge.svg)
 ![Swift](https://img.shields.io/badge/Swift-6.0-orange?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-203%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-212%20passed-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 ![Claude](https://img.shields.io/badge/Claude-Sonnet_5-orange?logo=anthropic&logoColor=white)
 
@@ -83,8 +83,8 @@ xcodebuild / xcresult bundle / CI log
 │                     ▼                                   │
 │  ┌──────────────────────────────────────────────┐       │
 │  │            RuleClassifier (struct)            │       │
-│  │  16 NSRegularExpression rules                 │       │
-│  │  7 categories · sub-millisecond · no network │       │
+│  │  19 NSRegularExpression rules                 │       │
+│  │  8 categories · sub-millisecond · no network │       │
 │  └───────────────────┬──────────────────────────┘       │
 │                      │ confidence < 0.60 AND --llm       │
 │                      ▼                                   │
@@ -123,7 +123,7 @@ xcodebuild / xcresult bundle / CI log
 
 ## Failure Categories
 
-| Category | Patterns (16 total) | Apple CI example |
+| Category | Patterns (19 total) | Apple CI example |
 |---|---|---|
 | `compilation_error` | unresolved identifier, type mismatch, linker, code sign | `use of unresolved identifier 'AVAssetTrackSegment'` |
 | `test_failure` | XCTest case failed, XCTAssert failure, `** TEST FAILED **` | `Test Case '-[MediaTests testBitIdentical]' failed (2.3s)` |
@@ -132,6 +132,7 @@ xcodebuild / xcresult bundle / CI log
 | `infra_failure` | xcode-select error, simctl boot timeout, git LFS | `simctl boot failed: timeout` |
 | `dependency_failure` | SPM resolve failed, CocoaPods error | `swift package resolve failed: package not found` |
 | `timeout` | build timeout, signal KILL | `Build timed out after 3600 seconds` |
+| `runtime_crash` | Swift trap (fatalError/precondition/assertion), fatal signal, sanitizer report | `Fatal error: Unexpectedly found nil while unwrapping an Optional value` |
 
 ---
 
@@ -339,7 +340,7 @@ xctriage analyze build.log --source xcodebuild --exit-code
 ## Tests
 
 ```bash
-swift test                          # 203 tests
+swift test                          # 212 tests
 swift test --enable-code-coverage   # with coverage
 swift build -c release              # build binary
 bash scripts/make_demo.sh           # run demo fixtures
