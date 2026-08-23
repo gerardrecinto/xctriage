@@ -250,10 +250,11 @@ Three diagrams, drawn straight from the real code (not the target design):
 
 ### Download binary (macOS)
 
-Download the latest `xctriage` binary from [Releases](https://github.com/gerardrecinto/xctriage/releases):
+Download the latest release zip from [Releases](https://github.com/gerardrecinto/xctriage/releases):
 
 ```bash
-curl -L https://github.com/gerardrecinto/xctriage/releases/latest/download/xctriage -o xctriage
+curl -L https://github.com/gerardrecinto/xctriage/releases/latest/download/xctriage-macos.zip -o xctriage-macos.zip
+unzip xctriage-macos.zip
 chmod +x xctriage
 mv xctriage /usr/local/bin/xctriage
 ```
