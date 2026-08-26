@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import XCTriageKit
 
 // Reuses StubURLProtocol from ClaudeClassifierTests.swift (same test target).

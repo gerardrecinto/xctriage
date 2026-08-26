@@ -1,5 +1,11 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+// swift-crypto's `Crypto` module mirrors CryptoKit's API (SHA256.hash(data:))
+// on platforms without Apple's native CryptoKit — Linux CI/Docker builds.
+import Crypto
+#endif
 
 // Deterministic identity for a failure: same category + same normalized
 // primary failure site → same fingerprint, independent of process/run.

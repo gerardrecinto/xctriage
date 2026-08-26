@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite3
+#endif
 
 // Wraps OpaquePointer so deinit can close SQLite without triggering actor-isolation warnings
 private final class DBHandle: @unchecked Sendable {

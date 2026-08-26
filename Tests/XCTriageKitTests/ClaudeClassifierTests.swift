@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import XCTriageKit
 
 // Stubs URLSession responses so I can exercise ClaudeClassifier without a

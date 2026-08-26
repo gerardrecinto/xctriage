@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // Claude-backed minimal-diff proposal generator. Mirrors ClaudeClassifier's
 // URLSession/actor shape deliberately: same request/response plumbing,

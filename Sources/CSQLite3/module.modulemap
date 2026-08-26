@@ -1,0 +1,9 @@
+// Linux-only stand-in for the `SQLite3` module Apple's SDK provides
+// implicitly on macOS. `libsqlite3-dev` ships headers and a .so but no
+// module map, so a plain `import SQLite3` has nothing to resolve against
+// off Apple platforms; this wraps the same C header SwiftPM's own way.
+module CSQLite3 [system] {
+    header "shim.h"
+    link "sqlite3"
+    export *
+}

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // Claude API failure classifier. Uses URLSession: no external SDK.
 // System prompt is sent with ephemeral cache control for cost efficiency on repeated calls.
