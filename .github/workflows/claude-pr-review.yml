@@ -1,0 +1,74 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# Same override convention as ci.yml: repo/org Variables (Settings > Secrets
+# and variables > Actions > Variables) override these without touching this
+# file. Action version pins stay hardcoded on purpose (see ci.yml's own note).
+env:
+  DIFF_FILE: pr.diff
+  REVIEW_FILE: pr_review.md
+
+jobs:
+  review:
+    # ubuntu-latest today; point vars.LINUX_RUNNER at an Actions Runner
+    # Controller runner-scale-set label once one exists (see
+    # docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md) — this job is pure
+    # Python + `gh`, no Xcode/macOS dependency, so it's ARC-eligible as-is.
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute PR diff
+        run: |
+          git diff "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" \
+            -- '*.swift' 'Package.swift' > "$DIFF_FILE"
+          echo "diff: $(wc -l < "$DIFF_FILE") lines"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install review script dependencies
+        run: pip install --quiet anthropic pydantic
+
+      # Secrets are optional on purpose, same as ci.yml's Auto-Remediate step:
+      # a fork's pull_request run has no repo secrets, so this just skips
+      # instead of failing the job. --post is also left off on a fork PR,
+      # where GITHUB_TOKEN can't comment on this repo anyway.
+      - name: Claude PR review
+        if: env.XCTRIAGE_ANTHROPIC_API_KEY != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.XCTRIAGE_ANTHROPIC_API_KEY }}
+          XCTRIAGE_ANTHROPIC_API_KEY: ${{ secrets.XCTRIAGE_ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          POST_FLAG=""
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" == "${{ github.repository }}" ]; then
+            POST_FLAG="--post"
+          fi
+          python3 .github/scripts/pr_reviewer.py \
+            --diff-file "$DIFF_FILE" \
+            --pr-number "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --commit-sha "${{ github.event.pull_request.head.sha }}" \
+            --output "$REVIEW_FILE" \
+            $POST_FLAG
+
+      - name: Upload review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-pr-review
+          path: |
+            ${{ env.DIFF_FILE }}
+            ${{ env.REVIEW_FILE }}
+          if-no-files-found: ignore

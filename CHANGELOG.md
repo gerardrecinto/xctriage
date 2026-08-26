@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `Dockerfile` / `.dockerignore`: multi-stage Linux build (`swift:6.0-noble` builder, `ubuntu:noble` non-root runtime) of the Linux-portable subset of xctriage, covering build-log/CI-log analysis, rule + Claude classification, flaky tracking, and remediation proposals. `.xcresult` parsing still needs a real Xcode install (`xcrun xcresulttool` has no Linux build), so that path stays "unavailable" inside this image by design, same as a real macOS agent without Xcode. `docker build` and a smoke test (`--version`, `--help`, `analyze` piped a synthetic linker-error log) verified against this exact Dockerfile.
+- `.github/workflows/claude-pr-review.yml` + `.github/scripts/pr_reviewer.py`: a second, PR-diff-scoped Claude review (technical-debt score, self-reported risk band, per-line violations, GitHub suggestion blocks for confidence >= 90%) that runs on every PR regardless of pass/fail, distinct from `ci.yml`'s existing failure-triage LLM pipeline, which only runs after a build/test failure.
+- `docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md`: target-only design sketch (per ADR-007) for an Actions Runner Controller runner set and an Argo CD `Application`, scoped honestly to what ARC can actually run (it cannot host the macOS Swift build, since no macOS container runtime exists) and to what Argo CD would actually sync for a CLI tool (a `CronJob` around the existing `flaky` subcommand, not an invented service). Cross-linked from `WHAT_I_DID_NOT_BUILD.md`; the "not built" verdict there is unchanged.
+
+### Fixed
+- Three Linux-only compile blockers that made `swift build` fail outright off macOS, found by actually building this repo inside `swift:6.0-noble` (not assumed from `Package.swift`'s `platforms: [.macOS(.v14)]`, which doesn't itself block a Linux build attempt): `CryptoKit` doesn't exist off Apple platforms (`FailureFingerprint.swift`), fixed with `#if canImport(CryptoKit)` and swift-crypto's API-compatible `Crypto` module as the Linux fallback; the implicit Darwin `SQLite3` module doesn't exist on Linux even with `libsqlite3-dev` installed, since that package ships headers but no module map (`FlakyTestTracker.swift`, `IdempotencyStore.swift`, `RemediationStateMachine.swift`), fixed with a local `CSQLite3` system-library target as the Linux fallback; `URLSession`/`URLRequest`/`HTTPURLResponse` live in the separate `FoundationNetworking` module on Linux, not `Foundation` (`ClaudeClassifier.swift`, `PatchGenerator.swift`, `SlackReporter.swift`, and the three test files that stub `URLSession`), fixed with `#if canImport(FoundationNetworking)` imports. `swift build -c release` reproducibly green inside `swift:6.0-noble` after these fixes; `swift test` run inside the same image separately (long-running, includes SandboxValidator's own nested build/test cycles).
+
 ## v1.6.0
 
 ### Fixed

@@ -1,0 +1,15 @@
+.git
+.build
+.swiftpm
+*.xcresult
+*.cast
+.remember
+.claude
+docs
+scripts
+CHANGELOG.md
+README.md
+Jenkinsfile
+.github
+xcuserdata
+.DS_Store

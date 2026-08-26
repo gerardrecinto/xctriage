@@ -173,6 +173,10 @@ The included `Jenkinsfile` and `.github/workflows/ci.yml` both run xctriage on t
 
 Both pipelines run the same checks in the same order: resolve, lint (SwiftLint), SAST (Semgrep in Jenkins, CodeQL in GitHub Actions since CodeQL isn't practical to self-host without a GHAS license), dependency/secret/misconfig scan (Trivy), build, test, auto-remediate, then archive a release binary on a tag.
 
+A third workflow, `.github/workflows/claude-pr-review.yml`, is separate from both: it scores the PR diff itself (complexity, Swift 6 concurrency-safety, test coverage) on every pull request regardless of pass/fail, instead of reacting to a build/test failure. See `.github/scripts/pr_reviewer.py`.
+
+`Dockerfile` builds the Linux-portable subset of xctriage (everything except `.xcresult` parsing, which needs a real Xcode install) — verified against `swift:6.0-noble`, including the three Linux-only portability fixes that took (CryptoKit, the implicit Darwin `SQLite3` module, `FoundationNetworking`) in this changelog's Unreleased section.
+
 ### Auto-Remediation
 
 Both pipelines classify test failures with Claude before deciding what to do about them, and both apply the same rule: **the LLM only picks the failure category, it never picks the action.**
@@ -235,6 +239,7 @@ It's written as a proposal, not a changelog. Every claim in it is tagged `(MEASU
 - [Part C — Privacy, Security & Reliability](docs/architecture/PART_C_PRIVACY_SECURITY_PHILOSOPHY_SECTIONS_115-210.md)
 - [Part D — Product, Operations & Final Review](docs/architecture/PART_D_PRODUCT_OPERATIONS_SECTIONS_211-307.md)
 - [What I Deliberately Did Not Build](docs/architecture/WHAT_I_DID_NOT_BUILD.md) — Kubernetes, GitOps, Kafka, Terraform, Postgres, and more: what's out of scope today and why
+- [Target: Actions Runner Controller + Argo CD](docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md) — the concrete shape of the GitOps piece above, including why ARC can't host the macOS build job at all
 - [Architecture Decision Records](docs/adr/) — 8 ADRs on the parts that are real, each with alternatives and why they were rejected
 - [Runbooks](docs/runbooks/) — 5 operational runbooks for real failure modes, including the one that found and fixed an actual bug in `SandboxValidator`
 

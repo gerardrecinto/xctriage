@@ -12,6 +12,8 @@ This list is maintained alongside the ADRs in `docs/adr/` — several entries he
 
 **What would justify building it:** an actual target environment to deploy to — even a single local/dev cluster, per the recommended MVP vertical slice in the target-architecture docs. Not before.
 
+**The concrete shape this would take** — an Actions Runner Controller runner set scoped to what it can actually run (not the macOS Swift build, which ARC structurally cannot host), and an Argo CD `Application` syncing a `CronJob` around the existing `flaky` subcommand — is sketched in [`TARGET_ARC_AND_ARGOCD_DESIGN.md`](TARGET_ARC_AND_ARGOCD_DESIGN.md). Still not built; that doc is the "what it would look like," not a change to the verdict above.
+
 ## Kafka / any event bus
 
 **Not built.** `xctriage remediate` is invoked directly by a human or by CI — there is no producer, no consumer, no topic, anywhere in this codebase.
@@ -76,4 +78,4 @@ This list is maintained alongside the ADRs in `docs/adr/` — several entries he
 
 ## What this list is not
 
-This isn't a roadmap and it isn't a promise any of the above ships next. It's a record of a decision already made: build the parts of a 114-point platform-engineering spec that are real, testable, and honestly describable — and say plainly, in one place, what the rest is instead of quietly letting a 800-line target-architecture document imply more than the code backs up.
+Nothing above is a roadmap, and none of it is a promise that these ship next: this page records a decision already made, to build the parts of a 114-point platform-engineering spec that are real, testable, and honestly describable, and to say plainly, in one place, what the rest is instead of quietly letting an 800-line target-architecture document imply more than the code backs up.
