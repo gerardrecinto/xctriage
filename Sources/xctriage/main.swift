@@ -18,7 +18,7 @@ struct XCTriage: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "xctriage",
         abstract: "AI-powered CI failure analysis for Apple platforms",
-        version: "1.6.1",
+        version: "1.7.0",
         subcommands: [Analyze.self, Flaky.self, Remediate.self, Redact.self]
     )
 }
@@ -196,7 +196,7 @@ struct Analyze: AsyncParsableCommand {
         return await tracker.recordAndScore(testNames: testNames, buildID: buildID, source: source, alsoRecord: !noTrack)
     }
 
-    // Shared by both the .xcresult and build-log branches of run() — same
+    // Shared by both the .xcresult and build-log branches of run() - same
     // reasoning as trackFlakiness above: duplicating this per-branch is
     // exactly how --llm silently got dropped for .xcresult input before
     // LLMFallbackPolicy existed.
@@ -210,6 +210,13 @@ struct Analyze: AsyncParsableCommand {
         redact: Bool,
         redactionReport: Bool
     ) async throws -> ClassificationResult {
+        let shouldLLM = llmAlways || (llmRequested && ruleResult.confidence < llmThreshold)
+        if shouldLLM && apiKey.isEmpty {
+            let msg = "xctriage: --llm requested but XCTRIAGE_ANTHROPIC_API_KEY environment variable is missing. " +
+                "Please configure your Claude Code API key (export XCTRIAGE_ANTHROPIC_API_KEY=...).\n"
+            FileHandle.standardError.write(Data(msg.utf8))
+        }
+
         guard LLMFallbackPolicy.shouldUseLLM(
             hasAPIKey: !apiKey.isEmpty, llmAlways: llmAlways, llmRequested: llmRequested,
             confidence: ruleResult.confidence, threshold: llmThreshold

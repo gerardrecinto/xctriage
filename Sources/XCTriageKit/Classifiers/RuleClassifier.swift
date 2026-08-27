@@ -25,6 +25,19 @@ public struct ClassifierRule: Sendable {
 
 // Default rules covering Apple CI failure modes and generic CI patterns
 internal let defaultRules: [ClassifierRule] = [
+    // Permission and Authorization failures
+    ClassifierRule(
+        pattern: #"(?i)(ScriptSecurityException|script.*not approved|RejectedAccessException|scripts not permitted)"#,
+        category: .infraFailure, weight: 0.90,
+        summaryTemplate: "Jenkins script security approval required",
+        fixTemplate: "Approve the pending script in Jenkins (Manage Jenkins > In-process Script Approval). If pipeline logic is blocked by custom credentials, configure XCTRIAGE_ANTHROPIC_API_KEY and run with --llm."
+    ),
+    ClassifierRule(
+        pattern: #"(?i)(permission denied|access denied|operation not permitted|EACCES|EPERM|403 Forbidden|401 Unauthorized|HTTP 403|HTTP 401)"#,
+        category: .infraFailure, weight: 0.88,
+        summaryTemplate: "Permission or authentication failure in CI pipeline",
+        fixTemplate: "Check user/agent credentials, file permissions, SSH keys, or access tokens. Configure XCTRIAGE_ANTHROPIC_API_KEY (Claude Code API key) and re-run with --llm for AI root cause analysis."
+    ),
     // Compilation: Swift/ObjC
     ClassifierRule(
         pattern: #"(?i)(cannot find|unresolved identifier|type .* has no member|undeclared identifier|use of unresolved identifier)"#,
@@ -129,7 +142,7 @@ internal let defaultRules: [ClassifierRule] = [
         fixTemplate: "Increase timeout with `xcodebuild -timeout` flag. Split large test suites across parallel destinations with `-parallel-testing-enabled YES`."
     ),
     // Runtime crashes: a Swift trap or a fatal OS signal killed the process
-    // mid-test, so there's often no "Test Case ... failed" line at all —
+    // mid-test, so there's often no "Test Case ... failed" line at all:
     // XCTest never gets the chance to log one before the process dies.
     ClassifierRule(
         pattern: #"(?i)(fatal error:|precondition failed:|assertion failed:)"#,
@@ -149,7 +162,7 @@ internal let defaultRules: [ClassifierRule] = [
         pattern: #"(?i)(AddressSanitizer:|ThreadSanitizer:|UndefinedBehaviorSanitizer:)"#,
         category: .runtimeCrash, weight: 0.94,
         summaryTemplate: "Sanitizer-detected memory or concurrency error",
-        fixTemplate: "Read the sanitizer report's allocation/access stack traces — this is a real bug, not CI"
+        fixTemplate: "Read the sanitizer report's allocation/access stack traces: this is a real bug, not CI"
             + " flakiness. Do not retry without fixing the underlying race or memory error."
     ),
 ]
@@ -178,9 +191,9 @@ public struct RuleClassifier: Sendable {
         // summary/fix text, and Dictionary iteration order isn't guaranteed
         // to agree with this loop's array order. On a weight tie between two
         // different categories, that let the reported category and the
-        // reported summary come from two different rules — verified
+        // reported summary come from two different rules (verified
         // empirically: category flipped between process runs while summary
-        // stayed fixed. Keeping one winning rule for everything closes that.
+        // stayed fixed). Keeping one winning rule for everything closes that.
         var bestRule: ClassifierRule?
         for (regex, rule) in compiledRules where regex.firstMatch(in: combined, range: range) != nil {
             if bestRule == nil || rule.weight > (bestRule?.weight ?? 0) {
@@ -193,7 +206,7 @@ public struct RuleClassifier: Sendable {
                 category: .unknown,
                 confidence: 0.0,
                 summary: "No matching failure pattern found",
-                suggestedFix: "Enable verbose logging (-verbose flag) and re-run to capture more context."
+                suggestedFix: "No matching rule found. Configure XCTRIAGE_ANTHROPIC_API_KEY (Claude Code API key) and re-run with --llm for AI-powered failure triage."
             )
         }
 

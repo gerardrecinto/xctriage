@@ -83,6 +83,25 @@ final class ClassifierTests: XCTestCase {
         let result = classifier.classify([])
         XCTAssertEqual(result.category, .unknown)
         XCTAssertEqual(result.confidence, 0.0)
+        XCTAssertTrue(result.suggestedFix?.contains("XCTRIAGE_ANTHROPIC_API_KEY") ?? false)
+    }
+
+    func test_classify_jenkinsScriptSecurityError() {
+        let entry = LogEntry(lineNumber: 1, level: .error,
+                             message: "org.jenkinsci.plugins.scriptsecurity.sandbox.RejectedAccessException: Scripts not permitted to use method", raw: "")
+        let result = classifier.classify([entry])
+        XCTAssertEqual(result.category, .infraFailure)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.88)
+        XCTAssertTrue(result.suggestedFix?.contains("Script Approval") ?? false)
+    }
+
+    func test_classify_permissionDeniedError() {
+        let entry = LogEntry(lineNumber: 1, level: .error,
+                             message: "chmod: cannot access '/var/jenkins/workspace/test': Permission denied", raw: "")
+        let result = classifier.classify([entry])
+        XCTAssertEqual(result.category, .infraFailure)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.88)
+        XCTAssertTrue(result.suggestedFix?.lowercased().contains("credentials") ?? false)
     }
 
     func test_classify_suggestedFixAlwaysPresent() {

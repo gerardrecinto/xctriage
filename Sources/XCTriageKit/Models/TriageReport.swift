@@ -2,7 +2,7 @@ import Foundation
 
 public struct ClassificationResult: Sendable {
     public var category: FailureCategory
-    public var confidence: Double   // 0.0–1.0
+    public var confidence: Double   // 0.0-1.0
     public var failureSites: [FailureSite]
     public var summary: String
     public var suggestedFix: String?

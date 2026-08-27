@@ -23,6 +23,9 @@ public struct BuildLogParser: Sendable {
     private static let genericErrorRE = try! NSRegularExpression(
         pattern: #"(?i)^error:\s+(.+)"#)
 
+    private static let permissionErrorRE = try! NSRegularExpression(
+        pattern: #"(?i)(permission denied|access denied|operation not permitted|ScriptSecurityException|RejectedAccessException|scripts not permitted|403 Forbidden|401 Unauthorized|EACCES|EPERM)"#)
+
     // Swift runtime trap, printed by the stdlib as `file:line: Fatal error: message`
     // (also covers `Precondition failed:` / `Assertion failed:`, same shape).
     private static let fatalErrorRE = try! NSRegularExpression(
@@ -67,6 +70,7 @@ public struct BuildLogParser: Sendable {
         }
         if Self.linkerErrorRE.firstMatch(in: line, range: range) != nil { return .error }
         if Self.genericErrorRE.firstMatch(in: line, range: range) != nil { return .error }
+        if Self.permissionErrorRE.firstMatch(in: line, range: range) != nil { return .error }
         if Self.testFailRE.firstMatch(in: line, range: range) != nil { return .error }
         if Self.fatalErrorRE.firstMatch(in: line, range: range) != nil { return .error }
         if Self.crashSignalRE.firstMatch(in: line, range: range) != nil { return .error }
@@ -76,9 +80,11 @@ public struct BuildLogParser: Sendable {
     public func extractFailureContext(_ entries: [LogEntry]) -> [LogEntry] {
         let failIdx = entries.firstIndex { entry in
             let r = NSRange(entry.message.startIndex..., in: entry.message)
-            guard let m = Self.buildResultRE.firstMatch(in: entry.message, range: r) else { return false }
-            let resultRange = Range(m.range(at: 2), in: entry.message)
-            return resultRange.map { entry.message[$0] == "FAILED" } ?? false
+            if let m = Self.buildResultRE.firstMatch(in: entry.message, range: r) {
+                let resultRange = Range(m.range(at: 2), in: entry.message)
+                return resultRange.map { entry.message[$0] == "FAILED" } ?? false
+            }
+            return Self.permissionErrorRE.firstMatch(in: entry.message, range: r) != nil
         }
         guard let idx = failIdx else {
             return entries.filter { $0.level == .error }
@@ -125,7 +131,7 @@ public struct BuildLogParser: Sendable {
                 continue
             }
             // Linker error. No file/line to key on, so dedup on the message
-            // itself — a repeated identical `ld:` line (echoed via `tee`, or
+            // itself - a repeated identical `ld:` line (echoed via `tee`, or
             // the linker itself repeating a summary line) would otherwise
             // produce one duplicate FailureSite per repetition.
             if let m = Self.linkerErrorRE.firstMatch(in: entry.message, range: msgRange) {
@@ -134,6 +140,15 @@ public struct BuildLogParser: Sendable {
                 if seen.insert(key).inserted {
                     sites.append(FailureSite(file: nil, line: nil, column: nil,
                                              testName: nil, errorMessage: "linker: \(msg ?? "")"))
+                }
+                continue
+            }
+            // Permission or script security error
+            if Self.permissionErrorRE.firstMatch(in: entry.message, range: msgRange) != nil {
+                let key = "permission:\(entry.lineNumber)"
+                if seen.insert(key).inserted {
+                    sites.append(FailureSite(file: nil, line: entry.lineNumber, column: nil,
+                                             testName: nil, errorMessage: entry.message))
                 }
                 continue
             }
