@@ -183,7 +183,7 @@ jobs:
 
       - name: Upload remediation proposal
         if: steps.propose_patch.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: remediation-proposal-${{ matrix.xcode }}
           path: ${{ env.REMEDIATION_DIFF }}
@@ -217,7 +217,7 @@ jobs:
 
       - name: Upload triage reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: triage-reports-${{ matrix.xcode }}
           path: |
