@@ -23,7 +23,7 @@ jobs:
     # Python + `gh`, no Xcode/macOS dependency, so it's ARC-eligible as-is.
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

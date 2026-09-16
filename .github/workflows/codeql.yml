@@ -16,7 +16,7 @@ jobs:
   analyze:
     runs-on: ${{ vars.MACOS_RUNNER || 'macos-15' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         run: sudo xcode-select --switch /Applications/Xcode_${{ vars.XCODE_VERSION || '16.3' }}.app
