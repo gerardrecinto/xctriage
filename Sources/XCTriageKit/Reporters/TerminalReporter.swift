@@ -27,7 +27,11 @@ public struct TerminalReporter: Sendable {
         writeln()
 
         writeln(colored("  CONFIDENCE", color: .cyan))
-        writeln("  \(confidenceBar(c.confidence))")
+        if c.confidence == 0.0 {
+            writeln("  \(colored(bold("NEEDS REVIEW"), color: .yellow))  (no rule matched — not a signal that the build is fine)")
+        } else {
+            writeln("  \(confidenceBar(c.confidence))")
+        }
         writeln()
 
         writeln(colored("  ROOT CAUSE", color: .cyan))

@@ -84,6 +84,15 @@ final class ClassifierTests: XCTestCase {
         XCTAssertEqual(result.category, .unknown)
         XCTAssertEqual(result.confidence, 0.0)
         XCTAssertTrue(result.suggestedFix?.contains("XCTRIAGE_ANTHROPIC_API_KEY") ?? false)
+        XCTAssertTrue(result.summary.contains("0 lines parsed"))
+    }
+
+    func test_classify_unknownForUnrecognizedContent() {
+        let entry = LogEntry(lineNumber: 1, level: .info, message: "Deploying widget to staging cluster", raw: "")
+        let result = classifier.classify([entry])
+        XCTAssertEqual(result.category, .unknown)
+        XCTAssertEqual(result.confidence, 0.0)
+        XCTAssertTrue(result.summary.contains("Scanned 1 log line"))
     }
 
     func test_classify_jenkinsScriptSecurityError() {
