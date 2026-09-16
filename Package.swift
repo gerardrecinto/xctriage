@@ -13,7 +13,7 @@ let package = Package(
         // stand-in for CryptoKit, which doesn't exist outside Apple platforms.
         .package(
             url: "https://github.com/apple/swift-crypto",
-            from: "3.0.0"
+            from: "4.5.2"
         ),
     ],
     targets: [
