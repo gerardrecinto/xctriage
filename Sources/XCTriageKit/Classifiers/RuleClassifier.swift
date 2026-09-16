@@ -202,10 +202,13 @@ public struct RuleClassifier: Sendable {
         }
 
         guard let topRule = bestRule else {
+            let summary = entries.isEmpty
+                ? "No log content to analyze (0 lines parsed) — check the file path and --source flag"
+                : "Scanned \(entries.count) log line(s); no known failure signature matched"
             return ClassificationResult(
                 category: .unknown,
                 confidence: 0.0,
-                summary: "No matching failure pattern found",
+                summary: summary,
                 suggestedFix: "No matching rule found. Configure XCTRIAGE_ANTHROPIC_API_KEY (Claude Code API key) and re-run with --llm for AI-powered failure triage."
             )
         }

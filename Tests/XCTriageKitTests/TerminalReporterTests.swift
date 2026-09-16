@@ -73,4 +73,14 @@ final class TerminalReporterTests: XCTestCase {
 
         XCTAssertTrue(collector.joined.contains("-30%"))
     }
+
+    func test_report_zeroConfidenceShowsNeedsReviewNotBarePercent() {
+        let collector = OutputCollector()
+        let report = sampleReport(source: .xcodebuild, llmUsed: false, confidence: 0.0)
+        TerminalReporter(write: collector.write).report(report)
+
+        let output = collector.joined
+        XCTAssertTrue(output.contains("NEEDS REVIEW"))
+        XCTAssertFalse(output.contains("0%"))
+    }
 }

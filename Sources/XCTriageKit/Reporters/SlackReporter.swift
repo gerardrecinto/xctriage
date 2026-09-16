@@ -52,7 +52,7 @@ public struct SlackReporter: Sendable {
                 "fields": [
                     ["type": "mrkdwn", "text": "*Build:*\n\(triage.buildID ?? "unknown")"],
                     ["type": "mrkdwn", "text": "*Source:*\n\(triage.source.rawValue)"],
-                    ["type": "mrkdwn", "text": "*Confidence:*\n\(Int(c.confidence * 100))%"],
+                    ["type": "mrkdwn", "text": "*Confidence:*\n\(c.confidence == 0.0 ? "NEEDS REVIEW" : "\(Int(c.confidence * 100))%")"],
                     ["type": "mrkdwn", "text": "*Log lines:*\n\(triage.rawLogLines)"],
                 ],
             ],
