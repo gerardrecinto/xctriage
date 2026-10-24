@@ -1,0 +1,47 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "Sources/XCTriageKit/Classifiers/**", "Tests/XCTriageKitTests/Fixtures/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Assemble site
+        run: |
+          mkdir -p _site/logs
+          cp site/index.html _site/
+          cp Tests/XCTriageKitTests/Fixtures/xcodebuild_compile_failure.log _site/logs/compile.log
+          cp Tests/XCTriageKitTests/Fixtures/xcodebuild_test_failure.log _site/logs/test.log
+          python3 - <<'PY'
+          import json, re
+          s = open("Sources/XCTriageKit/Classifiers/RuleClassifier.swift").read()
+          pat = re.compile(r'ClassifierRule\(\s*pattern: #"(.*?)"#,\s*category: \.(\w+),\s*weight: ([0-9.]+),\s*summaryTemplate: "((?:[^"\\]|\\.)*)",\s*fixTemplate: ((?:"(?:[^"\\]|\\.)*"\s*\+?\s*)+)\s*\)', re.S)
+          rules = [{"pattern": m[0], "category": m[1], "weight": float(m[2]), "summary": m[3], "fix": "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', m[4]))} for m in pat.findall(s)]
+          assert len(rules) == s.count("ClassifierRule(\n        pattern:"), "rule count mismatch"
+          json.dump(rules, open("_site/rules.json", "w"))
+          print(len(rules), "rules")
+          PY
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v5
