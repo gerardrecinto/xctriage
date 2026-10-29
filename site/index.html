@@ -162,7 +162,7 @@ td.p{font:12px ui-monospace,monospace;overflow-wrap:anywhere;min-width:220px}
     <div class="card" id="rep" aria-live="polite"><h3><span>Triage <span class="sim">RULES + LINE FILTER PORTED TO JS</span></span></h3><div class="status" id="boot">Loading the rules...</div></div>
   </div>
   <details class="rl"><summary id="rn">Rules</summary>
-    <p class="pl"><b>In plain words:</b> each rule is a pattern for one kind of failure, and the strongest match names the cause.</p>
+    <p class="pl">Each rule is a pattern for one kind of failure, and the strongest match names the cause.</p>
     <div class="tw" style="max-height:420px;overflow:auto" tabindex="0" role="region" aria-label="Classifier rule table"><table><thead><tr><th>Category</th><th>Weight</th><th>Pattern</th><th>Summary</th></tr></thead><tbody id="rt"></tbody></table></div>
   </details>
 </div></section>
@@ -192,13 +192,13 @@ unzip xctriage.zip
 
 <section><div class="wrap rv">
   <div class="limits"><strong>What this page is not</strong>
-    <p class="pl"><b>Rules and confidence. In plain words:</b> the score is how strong the best matching rule is, not a chance of being right.</p>
+    <p class="pl"><b>Rules and confidence. </b> The score is how strong the best matching rule is, not a chance of being right.</p>
     <ul>
     <li>The demo applies the tool's rule table and a port of its line filter in JavaScript. The Swift tool itself does not run here.</li>
     <li>Confidence is the winning rule's weight, not a probability. A log no rule matches comes back as unknown at 0%, which is when the optional <code>--llm</code> fallback applies.</li>
     </ul>
-    <p class="pl"><b>Flaky tracking. In plain words:</b> the tool remembers which tests fail on and off, so you can spot the unreliable ones.</p>
-    <p class="pl"><b>Xcode result files (xcresult). In plain words:</b> Xcode can save a test run as one bundle, and the tool can read it. Both need the real tool on a Mac, so neither runs on this page.</p>
+    <p class="pl"><b>Flaky tracking. </b> The tool remembers which tests fail on and off, so you can spot the unreliable ones.</p>
+    <p class="pl"><b>Xcode result files (xcresult). </b> Xcode can save a test run as one bundle, and the tool can read it. Both need the real tool on a Mac, so neither runs on this page.</p>
   </div>
 </div></section>
 

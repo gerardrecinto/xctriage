@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/gerardrecinto/xctriage/actions/workflows/ci.yml/badge.svg)
 
-In plain words: when an Xcode build fails, this tool reads the long log for you and says what went wrong.
+New here? When an Xcode build fails, this tool reads the long log for you and says what went wrong.
 
 xctriage reads a failed Xcode or XCTest build log and tells you the likely cause and a suggested fix. It is for people who maintain Apple-platform CI and are tired of scrolling through thousands of log lines.
 
@@ -167,7 +167,7 @@ cp .build/release/xctriage /usr/local/bin/
 <details>
 <summary>Failure categories and CI sources</summary>
 
-In plain words: each category is a kind of failure, and each rule is a pattern that recognizes one.
+Each category is a kind of failure, and each rule is a pattern that recognizes one.
 
 | Source | Flag | What it parses |
 |---|---|---|
