@@ -17,7 +17,7 @@ jobs:
     name: Build macOS binary
     runs-on: ${{ vars.MACOS_RUNNER || 'macos-15' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build release binary
         run: swift build -c release
