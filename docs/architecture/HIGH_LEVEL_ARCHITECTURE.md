@@ -1,21 +1,21 @@
 # High-Level Architecture
 
-One diagram, drawn at the same depth as a system-design interview whiteboard: a shape legend, an explicit reason for every split in the flow, and a decision diamond at every real branch — not just boxes connected by arrows. Two flows, not one, because CI and CD are different failure domains with different owners (see `docs/adr/ADR-007-no-implemented-continuous-deployment.md`): the CI flow below is **(MEASURED)** — it's what `.github/workflows/ci.yml` and the `remediate` CLI subcommand actually do today. The CD flow is **(TARGET)** — the design `docs/architecture/PART_B` lays out in full, none of it provisioned. Conflating the two would misrepresent what's real, which is exactly what `docs/architecture/WHAT_I_DID_NOT_BUILD.md` exists to prevent.
+One diagram, drawn at the same depth as a system-design interview whiteboard: a shape legend, an explicit reason for every split in the flow, and a decision diamond at every real branch: not just boxes connected by arrows. Two flows, not one, because CI and CD are different failure domains with different owners (see `docs/adr/ADR-007-no-implemented-continuous-deployment.md`): the CI flow below is **(MEASURED)**: it's what `.github/workflows/ci.yml` and the `remediate` CLI subcommand actually do today. The CD flow is **(TARGET)**: the design `docs/architecture/PART_B` lays out in full, none of it provisioned. Conflating the two would misrepresent what's real, which is exactly what `docs/architecture/WHAT_I_DID_NOT_BUILD.md` exists to prevent.
 
 ## Shape legend
 
 | Shape | Means | Example from this design |
 |---|---|---|
-| Rectangle `[ ]` | An ongoing process step — work happens here, no branch | `swift build`, `RemediationPolicy.isEligibleForRemediation`, `SandboxValidator.validate` |
+| Rectangle `[ ]` | An ongoing process step: work happens here, no branch | `swift build`, `RemediationPolicy.isEligibleForRemediation`, `SandboxValidator.validate` |
 | Diamond `< >` | A real yes/no decision, always exactly two exits | `category eligible?`, `sandbox passed?`, `already has a PR?` |
-| Circle `( )`, unlabeled | A true start or a true dead end — nothing follows it on this diagram | `commit pushed` (start); `Foundation.exit(4)` (dead end) |
+| Circle `( )`, unlabeled | A true start or a true dead end: nothing follows it on this diagram | `commit pushed` (start); `Foundation.exit(4)` (dead end) |
 | Circle `( X )`, labeled | The flow continues on a different diagram, not the next box down | The draft-PR handoff from the CI flow to the CD flow below |
 
-If a shape doesn't branch and doesn't end the flow, it's a rectangle. If it's a real fork, it's a diamond. A box drawn where a diamond belongs hides a decision from whoever's reading it — same rule either diagram.
+If a shape doesn't branch and doesn't end the flow, it's a rectangle. If it's a real fork, it's a diamond. A box drawn where a diamond belongs hides a decision from whoever's reading it: same rule either diagram.
 
 ---
 
-## Flow A: CI — commit to draft PR **(MEASURED)**
+## Flow A: CI: commit to draft PR **(MEASURED)**
 
 Every box below is a real step in `.github/workflows/ci.yml` or a real method call in `Sources/XCTriageKit`. Nothing here is aspirational.
 
@@ -162,9 +162,9 @@ Every box below is a real step in `.github/workflows/ci.yml` or a real method ca
                                                                   waiting for a human
 ```
 
-CI's job ends at `( X )`. Every state above the line CI produces is recorded durably — `RemediationStateMachine` persists each `transition:` step to SQLite (ADR-005), so a crashed run resumes from exactly where it left off instead of silently repeating (or skipping) work.
+CI's job ends at `( X )`. Every state above the line CI produces is recorded durably: `RemediationStateMachine` persists each `transition:` step to SQLite (ADR-005), so a crashed run resumes from exactly where it left off instead of silently repeating (or skipping) work.
 
-## Flow B: CD — draft PR to verified production fix **(TARGET, not implemented)**
+## Flow B: CD: draft PR to verified production fix **(TARGET, not implemented)**
 
 Nothing below this line runs anywhere. This is the design `docs/architecture/PART_B` sections 34-45 lay out in full depth; this is the same flow compressed to one screen, still tagged honestly.
 
@@ -218,11 +218,11 @@ Nothing below this line runs anywhere. This is the design `docs/architecture/PAR
 
 Same four reasons `docs/architecture/PART_B` section 35 gives, restated at the diagram level:
 
-1. **Different blast radius.** A CI failure (a bad patch, a failing sandbox) is scoped to one draft PR nobody has to look at until they choose to. A CD failure is live in front of whatever's actually deployed — which, today, is nothing, because there's nothing deployed.
-2. **Different owner.** CI is this codebase's own responsibility end to end, and it's the only half I can actually demonstrate. CD's owner would be whatever real deployment target eventually exists — it isn't this repo's job to pretend to be that owner in the meantime.
-3. **The artifact digest (or, today, the draft PR itself) is the real seam.** Flow A ends at a concrete, inspectable artifact — a draft PR a human can read. Flow B would start from a signed, immutable build of whatever that PR becomes *after* a human merges it, never a rebuild.
-4. **Different remediation mechanics.** A CI failure just fails the job — nothing to compensate for. A CD failure triggers a forward compensating transaction (the CAS-and-reconcile rollback above), a completely different mechanism that has no equivalent anywhere in Flow A.
+1. **Different blast radius.** A CI failure (a bad patch, a failing sandbox) is scoped to one draft PR nobody has to look at until they choose to. A CD failure is live in front of whatever's actually deployed: which, today, is nothing, because there's nothing deployed.
+2. **Different owner.** CI is this codebase's own responsibility end to end, and it's the only half I can actually demonstrate. CD's owner would be whatever real deployment target eventually exists: it isn't this repo's job to pretend to be that owner in the meantime.
+3. **The artifact digest (or, today, the draft PR itself) is the real seam.** Flow A ends at a concrete, inspectable artifact: a draft PR a human can read. Flow B would start from a signed, immutable build of whatever that PR becomes *after* a human merges it, never a rebuild.
+4. **Different remediation mechanics.** A CI failure just fails the job: nothing to compensate for. A CD failure triggers a forward compensating transaction (the CAS-and-reconcile rollback above), a completely different mechanism that has no equivalent anywhere in Flow A.
 
 ## What this diagram is not
 
-It's not a claim that Flow B exists. Every box in it is unimplemented, unprovisioned, untested — see `docs/architecture/WHAT_I_DID_NOT_BUILD.md` for the full list of exactly what's missing and why each piece was left out on purpose rather than half-built. Flow A is the entire, real system. Flow B is where it would go next, drawn honestly as a plan, not dressed up as a status report.
+It's not a claim that Flow B exists. Every box in it is unimplemented, unprovisioned, untested: see `docs/architecture/WHAT_I_DID_NOT_BUILD.md` for the full list of exactly what's missing and why each piece was left out on purpose rather than half-built. Flow A is the entire, real system. Flow B is where it would go next, drawn honestly as a plan, not dressed up as a status report.

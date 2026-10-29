@@ -19,11 +19,11 @@ jobs:
   review:
     # ubuntu-latest today; point vars.LINUX_RUNNER at an Actions Runner
     # Controller runner-scale-set label once one exists (see
-    # docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md) — this job is pure
+    # docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md), this job is pure
     # Python + `gh`, no Xcode/macOS dependency, so it's ARC-eligible as-is.
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -33,7 +33,7 @@ jobs:
             -- '*.swift' 'Package.swift' > "$DIFF_FILE"
           echo "diff: $(wc -l < "$DIFF_FILE") lines"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -41,11 +41,26 @@ jobs:
         run: pip install --quiet anthropic pydantic
 
       # Secrets are optional on purpose, same as ci.yml's Auto-Remediate step:
-      # a fork's pull_request run has no repo secrets, so this just skips
-      # instead of failing the job. --post is also left off on a fork PR,
-      # where GITHUB_TOKEN can't comment on this repo anyway.
+      # a fork's pull_request run has no repo secrets, so the review skips
+      # instead of failing the job. The secret is read in this one step and
+      # exposed to later steps only as a true/false output, because a step
+      # `if:` cannot see a variable that is set inside the step it guards.
+      - name: Check for API key
+        id: key
+        env:
+          XCTRIAGE_ANTHROPIC_API_KEY: ${{ secrets.XCTRIAGE_ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$XCTRIAGE_ANTHROPIC_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Claude PR review skipped: XCTRIAGE_ANTHROPIC_API_KEY is not available (not set, or this is a fork PR)." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # --post is left off on a fork PR, where GITHUB_TOKEN can't comment on
+      # this repo anyway.
       - name: Claude PR review
-        if: env.XCTRIAGE_ANTHROPIC_API_KEY != ''
+        if: steps.key.outputs.present == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.XCTRIAGE_ANTHROPIC_API_KEY }}
           XCTRIAGE_ANTHROPIC_API_KEY: ${{ secrets.XCTRIAGE_ANTHROPIC_API_KEY }}
@@ -65,7 +80,7 @@ jobs:
 
       - name: Upload review
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: claude-pr-review
           path: |

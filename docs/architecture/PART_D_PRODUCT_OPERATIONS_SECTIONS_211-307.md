@@ -1,5 +1,7 @@
 # xctriage Target Architecture, Part D: Product, Operations, Security Review (Sections 211-307)
 
+*Caveat: this document describes a target design, not shipped code. See [WHAT_I_DID_NOT_BUILD.md](WHAT_I_DID_NOT_BUILD.md) for what exists today.*
+
 This is a target-architecture design-review document, not a description of
 a system that exists today. It is Part D
 of a four-part review (see `./PART_A_*.md`, `./PART_B_*.md`, `./PART_C_*.md`

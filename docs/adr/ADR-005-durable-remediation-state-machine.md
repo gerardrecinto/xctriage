@@ -3,8 +3,8 @@
 ## Context
 
 A single `xctriage remediate --create-pr` invocation runs through several
-gates in sequence — eligibility check, patch generation, patch policy
-check, sandbox validation, PR creation — each of which can fail and each
+gates in sequence: eligibility check, patch generation, patch policy
+check, sandbox validation, PR creation: each of which can fail and each
 of which is a separate process invocation in practice (CI re-triggers the
 tool per failure, not as one long-lived session). Before this ADR, none of
 that sequence was recorded anywhere: a crash between sandbox validation and
@@ -17,7 +17,7 @@ RemediationStateMachine.swift`) persists every transition as a row in
 SQLite, keyed by failure fingerprint. It enforces a fixed predecessor graph
 (`patchProposed` → `validating` → `sandboxPassed`/`sandboxFailed`, etc.),
 rejects invalid jumps, and treats re-applying the current state as a
-no-op rather than an error — so a retried CLI invocation for the same
+no-op rather than an error: so a retried CLI invocation for the same
 fingerprint doesn't fail, it just confirms where the attempt already is.
 
 ## Alternatives
@@ -29,7 +29,7 @@ fingerprint doesn't fail, it just confirms where the attempt already is.
 - **Track state in the LLM conversation / agent transcript.** Rejected
   outright, and explicitly called out in `docs/architecture/PART_B` section
   37: "Do not store critical workflow state solely in LLM conversation
-  memory." A transcript is not a database — it has no query interface, no
+  memory." A transcript is not a database: it has no query interface, no
   durability guarantee independent of wherever the conversation happens to
   be stored, and nothing enforces that transitions in it are even legal.
 
@@ -39,7 +39,7 @@ SQLite gives durability and a queryable history for near-zero added
 complexity (see ADR-001). Modeling the predecessor graph as data
 (`allowedPredecessors: [State: Set<State?>]`) rather than as scattered
 `if` statements in the CLI means the legality of a transition is testable
-in isolation from the CLI plumbing that calls it — see
+in isolation from the CLI plumbing that calls it: see
 `RemediationStateMachineTests`, which asserts both the happy path and every
 rejected transition (skipping a stage, transitioning out of a terminal
 state, an unreachable first state).
@@ -48,7 +48,7 @@ state, an unreachable first state).
 
 - The state machine only models stages this codebase can actually reach
   (`patchProposed` through `prOpened`/`prFailed`). It intentionally does
-  not model deployment, canary, or rollback states — see ADR-007 for why.
+  not model deployment, canary, or rollback states: see ADR-007 for why.
 - Callers (currently just `Remediate.run()` in `Sources/xctriage/main.swift`)
   are responsible for calling `transition` at the right points; the state
   machine enforces legality but can't force a caller to call it at all.

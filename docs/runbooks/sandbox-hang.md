@@ -36,7 +36,7 @@ deadline wins, it calls `process.terminate()` (via the
 `SandboxProcessHandle` wrapper) to actually kill the hung child process,
 not just abandon waiting for it. `test_validate_timesOutRatherThanHangingForever`
 in `SandboxValidatorTests` asserts this against a fake tool that sleeps 30s
-with a 0.3s configured timeout, and passes in well under a second — proof
+with a 0.3s configured timeout, and passes in well under a second: proof
 the process is actually killed, not just that the error type matches.
 
 ## What must a human do?

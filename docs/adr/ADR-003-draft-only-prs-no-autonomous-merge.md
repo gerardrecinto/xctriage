@@ -12,14 +12,14 @@ writes to a real GitHub repository. It's reachable from
 `GitHubPRWriter` always passes `--draft` to `gh pr create` and never invokes
 `gh pr merge`, `git push --force` to a protected branch, or anything else
 that could land a change without a human clicking merge. This isn't a
-runtime flag — there is no code path in this type that can open a
+runtime flag: there is no code path in this type that can open a
 non-draft PR or merge one.
 
 ## Alternatives
 
 - **Auto-merge low-risk categories.** Section 38 of
   `docs/architecture/PART_B` sketches deployment autonomy levels up to
-  "approved low-risk remediation classes can fully auto-deploy" — but that
+  "approved low-risk remediation classes can fully auto-deploy": but that
   ladder starts above where this codebase currently sits. Auto-merging
   even a single-file, sandbox-validated, policy-allowed diff still means
   code an LLM wrote lands on `main` with no human in the loop.
@@ -32,7 +32,7 @@ non-draft PR or merge one.
 
 ## Why chosen
 
-The failure mode this avoids isn't "the patch is wrong" — sandbox
+The failure mode this avoids isn't "the patch is wrong": sandbox
 validation already catches that. It's "the patch is right for the wrong
 reason," "it duplicates a fix already in flight," or "it's technically
 correct but not what a maintainer would actually want here." A human
@@ -43,14 +43,14 @@ reviewing a draft PR catches those; nothing in this pipeline can.
 - Every automated fix requires a human to read and merge it, which is a
   real throughput ceiling. That's accepted as the cost of the guarantee.
 - `RemediationStateMachine`'s `prOpened` state (see ADR-005) is explicitly
-  the terminal, successful state for this tool's part of the pipeline —
+  the terminal, successful state for this tool's part of the pipeline:
   there is no `merged` or `deployed` state in the state machine, because
   this codebase has no way to observe or cause either.
 
 ## When to revisit
 
 Only after a long enough track record of draft PRs from this tool being
-merged essentially as-is for a specific, narrow failure category — and even
+merged essentially as-is for a specific, narrow failure category: and even
 then, per section 38, that decision belongs to a deterministic policy
 engine reading real merge/revert history, not to the LLM deciding for
 itself that a given diff "looks safe enough."

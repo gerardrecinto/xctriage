@@ -3,7 +3,7 @@
 ## What happened?
 
 All three durable stores in this codebase (`FlakyTestTracker`,
-`RemediationStateMachine`, `IdempotencyStore` — ADR-001) open the same
+`RemediationStateMachine`, `IdempotencyStore`: ADR-001) open the same
 kind of SQLite file with `PRAGMA journal_mode=WAL`. WAL mode allows one
 writer and multiple readers concurrently, but two *writers* to the same
 db file at the same time still contend, and a long-running writer (or a
@@ -20,7 +20,7 @@ command was running.
 
 ## What is the blast radius?
 
-Scoped to whichever db file is contended — `flaky.db`,
+Scoped to whichever db file is contended: `flaky.db`,
 `remediation_state.db`, and `idempotency.db` are separate files by
 default, so lock contention on one doesn't affect the others. Per
 ADR-001, this is expected to be rare in the current single-process-per-
@@ -30,7 +30,7 @@ CI cache volume) and run concurrently.
 
 ## What should happen automatically?
 
-Nothing today — none of the three stores set a `busy_timeout` or retry on
+Nothing today: none of the three stores set a `busy_timeout` or retry on
 `SQLITE_BUSY`. A concurrent write attempt fails immediately rather than
 waiting briefly for the other writer to finish.
 
@@ -42,7 +42,7 @@ files only after confirming no process still holds the db open (`lsof
 <path>`). If this is a recurring pattern (multiple CI runners genuinely
 racing to write to the same shared db path), separate the db path per
 runner (e.g. by build ID) or accept that this specific setup needs a real
-multi-writer database — see ADR-001's "When to revisit."
+multi-writer database: see ADR-001's "When to revisit."
 
 ## How do I verify recovery?
 
