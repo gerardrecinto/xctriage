@@ -19,7 +19,7 @@ jobs:
   review:
     # ubuntu-latest today; point vars.LINUX_RUNNER at an Actions Runner
     # Controller runner-scale-set label once one exists (see
-    # docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md) — this job is pure
+    # docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md), this job is pure
     # Python + `gh`, no Xcode/macOS dependency, so it's ARC-eligible as-is.
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
