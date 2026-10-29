@@ -127,7 +127,9 @@ This only ever touches the text sent to the failure-classification call. `xctria
 
 ### CI gate mode with `--exit-code`
 
-`--exit-code` returns exit code 1 when a failure is detected. Use it to block a pipeline stage on a real build failure:
+`--exit-code` returns 1 for a known failure category, a failure site, or a recognized error line. A file and line are not required.
+
+Exit 0 means no failure was detected. It does not prove the build succeeded. Use this flag to gate on detected failures:
 
 ```bash
 # In a Jenkinsfile post-build step

@@ -114,6 +114,9 @@ jobs:
             --llm \
             --output slack || true
 
+      - name: Check CLI failure exit codes
+        run: scripts/check-exit-codes.sh "$XCTRIAGE_BIN"
+
       - name: Test
         id: test
         continue-on-error: true

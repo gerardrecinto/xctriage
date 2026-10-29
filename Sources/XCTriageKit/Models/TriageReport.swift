@@ -8,6 +8,11 @@ public struct ClassificationResult: Sendable {
     public var suggestedFix: String?
     public var llmUsed: Bool
 
+    /// A classified failure does not need a source location to fail a CI gate.
+    public var hasDetectedFailure: Bool {
+        category != .unknown || !failureSites.isEmpty
+    }
+
     public init(
         category: FailureCategory,
         confidence: Double,
