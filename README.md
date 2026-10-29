@@ -414,3 +414,5 @@ bash scripts/make_demo.sh           # run demo fixtures
 ```
 
 </details>
+
+Optional paid help: [scoped reviews and setup](SUPPORT.md).
