@@ -1,48 +1,41 @@
 # xctriage
 
 ![CI](https://github.com/gerardrecinto/xctriage/actions/workflows/ci.yml/badge.svg)
-![Release](https://github.com/gerardrecinto/xctriage/actions/workflows/release.yml/badge.svg)
-![Swift](https://img.shields.io/badge/Swift-6.0-orange?logo=swift&logoColor=white)
-![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey?logo=apple&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-212%20passed-brightgreen)
-![License](https://img.shields.io/badge/License-MIT-lightgrey)
-![Claude](https://img.shields.io/badge/Claude-Sonnet_5-orange?logo=anthropic&logoColor=white)
 
-![xctriage logo](docs/assets/logo.svg)
+New here? When an Xcode build fails, this tool reads the long log for you and says what went wrong.
 
-> From "xcodebuild failed" to root cause + fix in under a second.
-
-Swift 6 command-line tool for AI-powered CI failure analysis on Apple platforms. Parses xcodebuild console output and `.xcresult` bundles. Rule-based classifier with Claude fallback via `URLSession`. Actor-based SQLite flaky test tracker with 90-day recurrence scoring.
-
-Built to demonstrate what "passion for the CI user experience on Apple's platform" looks like in practice: native Swift, native tooling, native concurrency model.
+xctriage reads a failed Xcode or XCTest build log and tells you the likely cause and a suggested fix. It is for people who maintain Apple-platform CI and are tired of scrolling through thousands of log lines.
 
 ![demo](docs/assets/demo.gif)
 
----
+## Try it in 60 seconds
 
-## What it looks like in practice
+You need macOS 14 or later with Swift 6 (comes with a current Xcode).
+
+```bash
+git clone https://github.com/gerardrecinto/xctriage.git
+cd xctriage
+swift build -c release
+.build/release/xctriage analyze \
+  Tests/XCTriageKitTests/Fixtures/xcodebuild_compile_failure.log --source xcodebuild
+```
+
+The build takes about 30 seconds. The last command analyzes a sample log that ships in the repo. To analyze your own log, replace the path.
+
+To skip the build, download the arm64 macOS binary from [Releases](https://github.com/gerardrecinto/xctriage/releases) instead.
+
+## Example output
 
 ```
-$ xctriage analyze xcbuild.log --source xcodebuild --build-id ios27-5512
-
-────────────────────────────────────────────────────────────
-  xctriage
-────────────────────────────────────────────────────────────
-  ✗  COMPILATION ERROR
-  build:  ios27-5512
-  source: xcodebuild
-  lines:  18
-  time:   0ms
-
-  CONFIDENCE
-  ██████████████████░░ 92%
+  COMPILATION ERROR
+  CONFIDENCE  92%
 
   ROOT CAUSE
   Swift/ObjC unresolved symbol or type error
 
   SUGGESTED FIX
-  Check import statements and module visibility. Run
-  `xcodebuild -showBuildSettings` to verify framework search paths.
+  Check import statements and module visibility. Run `xcodebuild -showBuildSettings`
+  to verify framework search paths.
 
   FAILURE SITES
   MediaDecoder.swift:142:17
@@ -53,229 +46,32 @@ $ xctriage analyze xcbuild.log --source xcodebuild --build-id ios27-5512
     value of type 'AVAudioFormat' has no member 'channelCapacity'
 
   (analysis: rule-based)
-────────────────────────────────────────────────────────────
 ```
 
-Add `--llm` to fall back to Claude when rule confidence drops below 0.60:
+This is trimmed from a real run of the command above. The tool also prints the source, line count and run time.
 
-```
-$ export XCTRIAGE_ANTHROPIC_API_KEY=sk-ant-...
-$ xctriage analyze xcbuild.log --source xcodebuild --llm
-```
+## What it does and does not do
 
----
+It does:
+- Read `xcodebuild` console output, GitHub Actions logs, and `.xcresult` bundles (the last needs macOS with Xcode).
+- Match the log against 21 weighted regex rules and pick the highest weight. There are 8 failure categories, such as compilation error, test failure and runtime crash.
+- Optionally ask Claude when no rule is confident. Use `--llm` and your own `XCTRIAGE_ANTHROPIC_API_KEY`. Without `--llm`, nothing leaves your machine.
+- Keep a local SQLite record of failures to score flaky tests over 90 days.
+- Print to the terminal, or output JSON, SARIF, GitHub annotations or a Slack message.
 
-## Architecture
+It does not:
+- Fix your code on its own. The `remediate` command only proposes a patch, checks it in a throwaway worktree, and can open a draft pull request. It never merges.
+- Give a calibrated probability. Confidence is the weight of the winning rule.
+- Understand every log. If no rule matches, the result is `unknown` with 0% confidence.
+- Run fully on Linux. A Dockerfile builds a subset that leaves out `.xcresult` parsing.
 
-```
-xcodebuild / xcresult bundle / CI log
-            │
-            ▼
-┌─────────────────────────────────────────────────────────┐
-│                        xctriage                         │
-│                                                         │
-│  ┌────────────────┐   ┌────────────────────────────┐    │
-│  │  BuildLogParser│   │   XCResultParser (actor)   │    │
-│  │  NSRegex rules │   │   xcrun xcresulttool wrap  │    │
-│  │  Level detect  │   │   Codable JSON decode      │    │
-│  └───────┬────────┘   └───────────┬────────────────┘    │
-│          └──────────┬─────────────┘                     │
-│                     ▼                                   │
-│  ┌──────────────────────────────────────────────┐       │
-│  │            RuleClassifier (struct)            │       │
-│  │  19 NSRegularExpression rules                 │       │
-│  │  8 categories · sub-millisecond · no network │       │
-│  └───────────────────┬──────────────────────────┘       │
-│                      │ confidence < 0.60 AND --llm       │
-│                      ▼                                   │
-│  ┌──────────────────────────────────────────────┐       │
-│  │          ClaudeClassifier (actor)             │       │
-│  │  URLSession POST to Claude API               │       │
-│  │  Ephemeral prompt cache · Codable response   │       │
-│  └───────────────────┬──────────────────────────┘       │
-│                      │                                   │
-│                      ▼                                   │
-│  ┌──────────────────────────────────────────────┐       │
-│  │         FlakyTestTracker (actor)              │       │
-│  │  SQLite WAL · 90-day window                  │       │
-│  │  score > 0.70 → quarantine candidate         │       │
-│  └───────────────────┬──────────────────────────┘       │
-│                      │                                   │
-│          ┌───────────┴──────────────┐                   │
-│          ▼           ▼              ▼                    │
-│     Terminal        JSON           Slack                 │
-│     (ANSI)       (Codable)      (URLSession)             │
-└─────────────────────────────────────────────────────────┘
-```
+## More
 
----
+- Try the rules in your browser: https://gerardrecinto.github.io/xctriage/
+- [Changelog](CHANGELOG.md), [architecture decisions](docs/adr/), [runbooks](docs/runbooks/)
 
-## CI Sources
-
-| Source | Flag | What it parses |
-|---|---|---|
-| xcodebuild | `--source xcodebuild` | `.swift`/`.m` file:line:col errors, XCTest case failures, linker errors, `** BUILD FAILED **` |
-| xcresult bundle | `build.xcresult` (positional) | `xcrun xcresulttool --legacy` JSON: build errors, test failures |
-| GitHub Actions | `--source github` | `##[error]` annotations, `::error file=` |
-| Generic | `--source generic` | Rule-based fallback |
-
----
-
-## Failure Categories
-
-| Category | Patterns (19 total) | Apple CI example |
-|---|---|---|
-| `compilation_error` | unresolved identifier, type mismatch, linker, code sign | `use of unresolved identifier 'AVAssetTrackSegment'` |
-| `test_failure` | XCTest case failed, XCTAssert failure, `** TEST FAILED **` | `Test Case '-[MediaTests testBitIdentical]' failed (2.3s)` |
-| `flaky_test` | intermittent, async timeout, connection-in-test | `async operation did not complete within 2 seconds` |
-| `resource_exhaustion` | OOM, Killed:9, disk full, DerivedData | `No space left on device`, memory pressure |
-| `infra_failure` | xcode-select error, simctl boot timeout, git LFS | `simctl boot failed: timeout` |
-| `dependency_failure` | SPM resolve failed, CocoaPods error | `swift package resolve failed: package not found` |
-| `timeout` | build timeout, signal KILL | `Build timed out after 3600 seconds` |
-| `runtime_crash` | Swift trap (fatalError/precondition/assertion), fatal signal, sanitizer report | `Fatal error: Unexpectedly found nil while unwrapping an Optional value` |
-
----
-
-## Swift 6 Concepts Demonstrated
-
-Rather than a feature checklist, here is how each concept appears in the actual code:
-
-**`actor` for concurrent state**
-- `ClaudeClassifier`: actor protects concurrent URLSession calls; no data races possible on API key / model config
-- `XCResultParser`: actor wraps `Process` subprocess execution; multiple callers can't interleave xcresulttool spawns
-- `FlakyTestTracker`: actor serializes all SQLite reads/writes; replaces NSLock or DispatchQueue
-
-**`async/await` with `withCheckedThrowingContinuation`**
-- `XCResultParser.run()`: converts `Process.terminationHandler` callback to async; no nested completion handlers
-- `ClaudeClassifier.post()`: `URLSession.data(for:)` is async; entire network path is await-able
-
-**Typed `throws` / custom `Error` enum**
-- `TriageError: Error, Sendable`: all failure modes are named cases: `.xcresultToolFailed(Int32, String)`, `.claudeAPIError(Int, String)`, `.fileNotFound(String)`, `.parseError(String)`
-
-**`Sendable` throughout**
-- All model types are `Sendable` value types (`struct`, `enum`)
-- `DBHandle: @unchecked Sendable`: wraps `OpaquePointer` so actor `deinit` can close SQLite without violation
-
-**`Codable` for xcresult JSON**
-- `XCResultSummary`, `XCResultAction`, `XCResultIssueSummary`, `XCResultTestFailureSummary`: plain structs decoded against xcresulttool `--legacy` output after `unwrapLegacyEnvelope` strips Apple's `{"_type", "_value"/"_values"}` wrapper recursively, once, up front — rather than a custom `CodingKeys`/nested-wrapper-type per field
-
-**`NSRegularExpression` at module level**
-- All 6 patterns compiled once in `BuildLogParser` static constants: avoids per-call recompilation across every build log line
-
-**`CommandConfiguration` + `AsyncParsableCommand`**
-- `swift-argument-parser` integration for `analyze`, `remediate`, and `flaky` subcommands with typed flags and options
-
----
-
-## CI/CD Pipelines
-
-The included `Jenkinsfile` and `.github/workflows/ci.yml` both run xctriage on their own build output: a self-triaging pipeline that classifies its own failures instead of leaving that to whoever's on call.
-
-Both pipelines run the same checks in the same order: resolve, lint (SwiftLint), SAST (Semgrep in Jenkins, CodeQL in GitHub Actions since CodeQL isn't practical to self-host without a GHAS license), dependency/secret/misconfig scan (Trivy), build, test, auto-remediate, then archive a release binary on a tag.
-
-A third workflow, `.github/workflows/claude-pr-review.yml`, is separate from both: it scores the PR diff itself (complexity, Swift 6 concurrency-safety, test coverage) on every pull request regardless of pass/fail, instead of reacting to a build/test failure. See `.github/scripts/pr_reviewer.py`.
-
-`Dockerfile` builds the Linux-portable subset of xctriage (everything except `.xcresult` parsing, which needs a real Xcode install) — verified against `swift:6.0-noble`, including the three Linux-only portability fixes that took (CryptoKit, the implicit Darwin `SQLite3` module, `FoundationNetworking`) in this changelog's Unreleased section.
-
-### Auto-Remediation
-
-Both pipelines classify test failures with Claude before deciding what to do about them, and both apply the same rule: **the LLM only picks the failure category, it never picks the action.**
-
-- A `flaky_test` verdict at 0.75+ confidence gets one automatic retry. If the retry passes, the build goes green and nobody gets paged for a flake.
-- A `compilation_error` verdict gets a policy-gated remediation attempt instead: `xctriage remediate` fingerprints the failure, re-checks it against `RemediationPolicy` (category allowlist, confidence floor, forbidden paths), asks Claude for exactly one single-file unified diff, and proves that diff by applying it inside an isolated `git worktree` and actually running `swift build` + `swift test` there. If policy or the sandbox rejects it — wrong shape, too many files, still doesn't build, still doesn't pass — the command exits non-zero and the pipeline falls through to the same Slack notification as any other unhandled category. Nothing here is ever applied to the working tree or opened as a PR; a passing proposal is archived as a build artifact for a human to read and apply by hand.
-- Every other category (dependency failure, OOM, timeout, infra failure) has no safe auto-fix, so the pipeline posts the LLM's suggested fix to Slack and leaves the build failed for a human.
-- The flaky retry only ever happens once, and the remediation attempt only ever proposes, never applies. There's no loop, no escalating retry count, and category eligibility is enforced by `RemediationPolicy` in code, not by pipeline logic trusting the model's word for it.
-
-**Jenkinsfile** (`stage('Auto-Remediate (LLM)')`):
-
-```groovy
-if (category == 'flaky_test' && confidence >= threshold) {
-    sh 'swift test --enable-code-coverage 2>&1 | tee "${TEST_LOG}"'
-    currentBuild.result = 'SUCCESS'
-} else if (category == 'compilation_error') {
-    def status = sh(script: '"${XCTRIAGE_BIN}" remediate "${TEST_LOG}" --source "${CI_SOURCE}" --repo-root "${WORKSPACE}" --out "${REMEDIATION_DIFF}"', returnStatus: true)
-    if (status == 0) {
-        archiveArtifacts artifacts: "${REMEDIATION_DIFF}", allowEmptyArchive: true
-    }
-    sh '"${XCTRIAGE_BIN}" analyze "${TEST_LOG}" --source "${CI_SOURCE}" --llm --output slack'
-} else {
-    sh '"${XCTRIAGE_BIN}" analyze "${TEST_LOG}" --source "${CI_SOURCE}" --llm --output slack'
-}
-```
-
-**GitHub Actions** (`.github/workflows/ci.yml`):
-
-```yaml
-- name: "Auto-Remediate: retry flaky test"
-  if: >
-    steps.test.outcome == 'failure' &&
-    steps.classify.outputs.category == 'flaky_test' &&
-    fromJSON(steps.classify.outputs.confidence) >= fromJSON(env.FLAKY_CONFIDENCE_THRESHOLD)
-  run: swift test 2>&1 | tee test.log
-
-- name: "Auto-Remediate: propose sandboxed patch (compilation_error)"
-  id: propose_patch
-  if: >
-    steps.test.outcome == 'failure' &&
-    steps.retry.outcome != 'success' &&
-    steps.classify.outputs.category == 'compilation_error'
-  continue-on-error: true
-  run: "$XCTRIAGE_BIN" remediate "$TEST_LOG" --source "$CI_SOURCE" --repo-root . --out "$REMEDIATION_DIFF"
-```
-
-Nothing above is an inline literal buried in a step: the confidence threshold, log paths, xctriage binary path, and Trivy severity are all named pipeline variables (Jenkins build parameters and `environment {}` entries; GitHub Actions job-level `env:`), and the agent label / credential IDs are controller-level overrides (`env.XCTRIAGE_AGENT_LABEL`, `env.XCTRIAGE_ANTHROPIC_CREDENTIAL_ID`, `env.XCTRIAGE_SLACK_CREDENTIAL_ID`) rather than build parameters, since those pick *where* and *as whom* the pipeline runs and shouldn't be settable by whoever triggers a build.
-
----
-
-## Where this could go
-
-Everything above is what runs today. `docs/architecture/` has a four-part design review of what a larger version of this project could look like: an agentic remediation pipeline coordinating multiple specialized agents over an Agent-to-Agent (A2A) protocol, continuous deployment with GitOps and canary rollout, a formal privacy/security threat model, and platform-scale operations.
-
-It's written as a proposal, not a changelog. Every claim in it is tagged `(MEASURED)` when it's true of the code in this repo today, or `(TARGET)` when it's a design goal with nothing built behind it yet. That distinction is the whole point of the document: it exists to be clear about the gap between what's shipped and what's proposed, not to blur it.
-
-- [High-Level Architecture](docs/architecture/HIGH_LEVEL_ARCHITECTURE.md) — one diagram, shape legend and decision diamonds, the real CI flow and the target CD flow side by side
-- [Part A — Agentic Architecture & Auto-Remediation](docs/architecture/PART_A_AGENTIC_ARCHITECTURE_SECTIONS_1-33.md)
-- [Part B — Continuous Deployment & DevOps System Design](docs/architecture/PART_B_DEVOPS_SYSTEM_DESIGN_SECTIONS_34-114.md)
-- [Part C — Privacy, Security & Reliability](docs/architecture/PART_C_PRIVACY_SECURITY_PHILOSOPHY_SECTIONS_115-210.md)
-- [Part D — Product, Operations & Final Review](docs/architecture/PART_D_PRODUCT_OPERATIONS_SECTIONS_211-307.md)
-- [What I Deliberately Did Not Build](docs/architecture/WHAT_I_DID_NOT_BUILD.md) — Kubernetes, GitOps, Kafka, Terraform, Postgres, and more: what's out of scope today and why
-- [Target: Actions Runner Controller + Argo CD](docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md) — the concrete shape of the GitOps piece above, including why ARC can't host the macOS build job at all
-- [Architecture Decision Records](docs/adr/) — 8 ADRs on the parts that are real, each with alternatives and why they were rejected
-- [Runbooks](docs/runbooks/) — 5 operational runbooks for real failure modes, including the one that found and fixed an actual bug in `SandboxValidator`
-
-Three diagrams, drawn straight from the real code (not the target design):
-
-<img src="docs/assets/remediation-state-machine.svg" alt="Remediation state machine: patchProposed to validating to sandboxPassed/sandboxFailed to prOpened/prFailed/policyRejected" width="49%"> <img src="docs/assets/security-boundaries.svg" alt="Trust boundaries: untrusted input, LLM proposal, deterministic policy gate, sandbox, draft PR, human approval" width="49%">
-
-<img src="docs/assets/ci-pipeline.svg" alt="xctriage's own CI pipeline, read from .github/workflows/ci.yml" width="98%">
-
----
-
-## Install
-
-### Download binary (macOS)
-
-Download the latest release zip from [Releases](https://github.com/gerardrecinto/xctriage/releases):
-
-```bash
-curl -L https://github.com/gerardrecinto/xctriage/releases/latest/download/xctriage-macos.zip -o xctriage-macos.zip
-unzip xctriage-macos.zip
-chmod +x xctriage
-mv xctriage /usr/local/bin/xctriage
-```
-
-### Build from source
-
-```bash
-git clone https://github.com/gerardrecinto/xctriage.git
-cd xctriage
-swift build -c release
-cp .build/release/xctriage /usr/local/bin/
-```
-
----
-
-## Usage
+<details>
+<summary>All commands and flags</summary>
 
 ```bash
 # Analyze xcodebuild log
@@ -319,7 +115,7 @@ xctriage analyze xcbuild.log --source xcodebuild --llm --redact --redaction-repo
 # See exactly what would be sent to Claude, without calling the API
 xctriage analyze xcbuild.log --source xcodebuild --llm --redact --dry-run-prompt
 
-# Standalone redaction, independent of --llm — pipe any file/log through it
+# Standalone redaction, independent of --llm - pipe any file/log through it
 xctriage redact xcbuild.log --report
 ```
 
@@ -327,7 +123,7 @@ xctriage redact xcbuild.log --report
 
 `--redact` runs the log through a deterministic regex-based scrubber (`Redactor`, no LLM involved) before it reaches `ClaudeClassifier`: GitHub/Slack/Anthropic/OpenAI tokens, AWS access keys, private key blocks, JWTs, bearer tokens, credentials embedded in URLs, `KEY=value`-style secrets from CI environment dumps, `/Users/<name>` home paths, and email addresses (opt out per-run with `xctriage redact --keep-emails`). `--redaction-report` shows what was stripped without ever printing the actual secret. `--dry-run-prompt` prints the exact text that would leave the machine and exits before any network call, so you can check it before wiring `--llm` into CI at all.
 
-This only ever touches the text sent to the failure-classification call. `xctriage remediate` sends real file contents to Claude to generate a patch — that path is intentionally left alone, because a patch has to apply against the byte-for-byte real source or sandbox validation rejects it.
+This only ever touches the text sent to the failure-classification call. `xctriage remediate` sends real file contents to Claude to generate a patch - that path is intentionally left alone, because a patch has to apply against the byte-for-byte real source or sandbox validation rejects it.
 
 ### CI gate mode with `--exit-code`
 
@@ -341,13 +137,280 @@ xctriage analyze build.log --source xcodebuild --exit-code
 - run: xctriage analyze build.log --source xcodebuild --exit-code
 ```
 
----
+</details>
 
-## Tests
+<details>
+<summary>Install options</summary>
+
+### Download binary (macOS)
+
+Download the latest release zip from [Releases](https://github.com/gerardrecinto/xctriage/releases):
 
 ```bash
-swift test                          # 212 tests
+curl -L https://github.com/gerardrecinto/xctriage/releases/latest/download/xctriage-macos.zip -o xctriage-macos.zip
+unzip xctriage-macos.zip
+chmod +x xctriage
+mv xctriage /usr/local/bin/xctriage
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/gerardrecinto/xctriage.git
+cd xctriage
+swift build -c release
+cp .build/release/xctriage /usr/local/bin/
+```
+
+</details>
+
+<details>
+<summary>Failure categories and CI sources</summary>
+
+Each category is a kind of failure, and each rule is a pattern that recognizes one.
+
+| Source | Flag | What it parses |
+|---|---|---|
+| xcodebuild | `--source xcodebuild` | `.swift`/`.m` file:line:col errors, XCTest case failures, linker errors, `** BUILD FAILED **` |
+| xcresult bundle | `build.xcresult` (positional) | `xcrun xcresulttool --legacy` JSON: build errors, test failures |
+| GitHub Actions | `--source github` | `##[error]` annotations, `::error file=` |
+| Generic | `--source generic` | Rule-based fallback |
+
+---
+
+## Failure Categories
+
+| Category | Patterns (21 total) | Apple CI example |
+|---|---|---|
+| `compilation_error` | unresolved identifier, type mismatch, linker, code sign | `use of unresolved identifier 'AVAssetTrackSegment'` |
+| `test_failure` | XCTest case failed, XCTAssert failure, `** TEST FAILED **` | `Test Case '-[MediaTests testBitIdentical]' failed (2.3s)` |
+| `flaky_test` | intermittent, async timeout, connection-in-test | `async operation did not complete within 2 seconds` |
+| `resource_exhaustion` | OOM, Killed:9, disk full, DerivedData | `No space left on device`, memory pressure |
+| `infra_failure` | xcode-select error, simctl boot timeout, git LFS | `simctl boot failed: timeout` |
+| `dependency_failure` | SPM resolve failed, CocoaPods error | `swift package resolve failed: package not found` |
+| `timeout` | build timeout, signal KILL | `Build timed out after 3600 seconds` |
+| `runtime_crash` | Swift trap (fatalError/precondition/assertion), fatal signal, sanitizer report | `Fatal error: Unexpectedly found nil while unwrapping an Optional value` |
+
+</details>
+
+<details>
+<summary>Architecture diagram</summary>
+
+```
+xcodebuild / xcresult bundle / CI log
+            │
+            ▼
+┌─────────────────────────────────────────────────────────┐
+│                        xctriage                         │
+│                                                         │
+│  ┌────────────────┐   ┌────────────────────────────┐    │
+│  │  BuildLogParser│   │   XCResultParser (actor)   │    │
+│  │  NSRegex rules │   │   xcrun xcresulttool wrap  │    │
+│  │  Level detect  │   │   Codable JSON decode      │    │
+│  └───────┬────────┘   └───────────┬────────────────┘    │
+│          └──────────┬─────────────┘                     │
+│                     ▼                                   │
+│  ┌──────────────────────────────────────────────┐       │
+│  │            RuleClassifier (struct)            │       │
+│  │  21 NSRegularExpression rules                 │       │
+│  │  8 categories · sub-millisecond · no network │       │
+│  └───────────────────┬──────────────────────────┘       │
+│                      │ confidence < 0.60 AND --llm       │
+│                      ▼                                   │
+│  ┌──────────────────────────────────────────────┐       │
+│  │          ClaudeClassifier (actor)             │       │
+│  │  URLSession POST to Claude API               │       │
+│  │  Ephemeral prompt cache · Codable response   │       │
+│  └───────────────────┬──────────────────────────┘       │
+│                      │                                   │
+│                      ▼                                   │
+│  ┌──────────────────────────────────────────────┐       │
+│  │         FlakyTestTracker (actor)              │       │
+│  │  SQLite WAL · 90-day window                  │       │
+│  │  score > 0.70 → quarantine candidate         │       │
+│  └───────────────────┬──────────────────────────┘       │
+│                      │                                   │
+│          ┌───────────┴──────────────┐                   │
+│          ▼           ▼              ▼                    │
+│     Terminal        JSON           Slack                 │
+│     (ANSI)       (Codable)      (URLSession)             │
+└─────────────────────────────────────────────────────────┘
+```
+
+</details>
+
+<details>
+<summary>A longer output example</summary>
+
+```
+$ xctriage analyze xcbuild.log --source xcodebuild --build-id ios27-5512
+
+────────────────────────────────────────────────────────────
+  xctriage
+────────────────────────────────────────────────────────────
+  ✗  COMPILATION ERROR
+  build:  ios27-5512
+  source: xcodebuild
+  lines:  18
+  time:   0ms
+
+  CONFIDENCE
+  ██████████████████░░ 92%
+
+  ROOT CAUSE
+  Swift/ObjC unresolved symbol or type error
+
+  SUGGESTED FIX
+  Check import statements and module visibility. Run
+  `xcodebuild -showBuildSettings` to verify framework search paths.
+
+  FAILURE SITES
+  MediaDecoder.swift:142:17
+    use of unresolved identifier 'AVAssetTrackSegment'
+  MediaDecoder.swift:156:9
+    cannot convert value of type 'CMTime' to specified type 'Double'
+  AudioBufferProcessor.swift:89:22
+    value of type 'AVAudioFormat' has no member 'channelCapacity'
+
+  (analysis: rule-based)
+────────────────────────────────────────────────────────────
+```
+
+Add `--llm` to fall back to Claude when rule confidence drops below 0.60:
+
+```
+$ export XCTRIAGE_ANTHROPIC_API_KEY=sk-ant-...
+$ xctriage analyze xcbuild.log --source xcodebuild --llm
+```
+
+</details>
+
+<details>
+<summary>Auto-remediation and CI pipelines</summary>
+
+The included `Jenkinsfile` and `.github/workflows/ci.yml` both run xctriage on their own build output: a self-triaging pipeline that classifies its own failures instead of leaving that to whoever's on call.
+
+Both pipelines run the same checks in the same order: resolve, lint (SwiftLint), SAST (Semgrep in Jenkins, CodeQL in GitHub Actions since CodeQL isn't practical to self-host without a GHAS license), dependency/secret/misconfig scan (Trivy), build, test, auto-remediate, then archive a release binary on a tag.
+
+A third workflow, `.github/workflows/claude-pr-review.yml`, is separate from both: it scores the PR diff itself (complexity, Swift 6 concurrency-safety, test coverage) on every pull request regardless of pass/fail, instead of reacting to a build/test failure. See `.github/scripts/pr_reviewer.py`.
+
+`Dockerfile` builds the Linux-portable subset of xctriage (everything except `.xcresult` parsing, which needs a real Xcode install) - verified against `swift:6.0-noble`, including the three Linux-only portability fixes that took (CryptoKit, the implicit Darwin `SQLite3` module, `FoundationNetworking`) in this changelog's Unreleased section.
+
+### Auto-Remediation
+
+Both pipelines classify test failures with Claude before deciding what to do about them, and both apply the same rule: **the LLM only picks the failure category, it never picks the action.**
+
+- A `flaky_test` verdict at 0.75+ confidence gets one automatic retry. If the retry passes, the build goes green and nobody gets paged for a flake.
+- A `compilation_error` verdict gets a policy-gated remediation attempt instead: `xctriage remediate` fingerprints the failure, re-checks it against `RemediationPolicy` (category allowlist, confidence floor, forbidden paths), asks Claude for exactly one single-file unified diff, and proves that diff by applying it inside an isolated `git worktree` and actually running `swift build` + `swift test` there. If policy or the sandbox rejects it - wrong shape, too many files, still doesn't build, still doesn't pass - the command exits non-zero and the pipeline falls through to the same Slack notification as any other unhandled category. Nothing here is ever applied to the working tree or opened as a PR; a passing proposal is archived as a build artifact for a human to read and apply by hand.
+- Every other category (dependency failure, OOM, timeout, infra failure) has no safe auto-fix, so the pipeline posts the LLM's suggested fix to Slack and leaves the build failed for a human.
+- The flaky retry only ever happens once, and the remediation attempt only ever proposes, never applies. There's no loop, no escalating retry count, and category eligibility is enforced by `RemediationPolicy` in code, not by pipeline logic trusting the model's word for it.
+
+**Jenkinsfile** (`stage('Auto-Remediate (LLM)')`):
+
+```groovy
+if (category == 'flaky_test' && confidence >= threshold) {
+    sh 'swift test --enable-code-coverage 2>&1 | tee "${TEST_LOG}"'
+    currentBuild.result = 'SUCCESS'
+} else if (category == 'compilation_error') {
+    def status = sh(script: '"${XCTRIAGE_BIN}" remediate "${TEST_LOG}" --source "${CI_SOURCE}" --repo-root "${WORKSPACE}" --out "${REMEDIATION_DIFF}"', returnStatus: true)
+    if (status == 0) {
+        archiveArtifacts artifacts: "${REMEDIATION_DIFF}", allowEmptyArchive: true
+    }
+    sh '"${XCTRIAGE_BIN}" analyze "${TEST_LOG}" --source "${CI_SOURCE}" --llm --output slack'
+} else {
+    sh '"${XCTRIAGE_BIN}" analyze "${TEST_LOG}" --source "${CI_SOURCE}" --llm --output slack'
+}
+```
+
+**GitHub Actions** (`.github/workflows/ci.yml`):
+
+```yaml
+- name: "Auto-Remediate: retry flaky test"
+  if: >
+    steps.test.outcome == 'failure' &&
+    steps.classify.outputs.category == 'flaky_test' &&
+    fromJSON(steps.classify.outputs.confidence) >= fromJSON(env.FLAKY_CONFIDENCE_THRESHOLD)
+  run: swift test 2>&1 | tee test.log
+
+- name: "Auto-Remediate: propose sandboxed patch (compilation_error)"
+  id: propose_patch
+  if: >
+    steps.test.outcome == 'failure' &&
+    steps.retry.outcome != 'success' &&
+    steps.classify.outputs.category == 'compilation_error'
+  continue-on-error: true
+  run: "$XCTRIAGE_BIN" remediate "$TEST_LOG" --source "$CI_SOURCE" --repo-root . --out "$REMEDIATION_DIFF"
+```
+
+Nothing above is an inline literal buried in a step: the confidence threshold, log paths, xctriage binary path, and Trivy severity are all named pipeline variables (Jenkins build parameters and `environment {}` entries; GitHub Actions job-level `env:`), and the agent label / credential IDs are controller-level overrides (`env.XCTRIAGE_AGENT_LABEL`, `env.XCTRIAGE_ANTHROPIC_CREDENTIAL_ID`, `env.XCTRIAGE_SLACK_CREDENTIAL_ID`) rather than build parameters, since those pick *where* and *as whom* the pipeline runs and shouldn't be settable by whoever triggers a build.
+
+</details>
+
+<details>
+<summary>Design docs and what is not built</summary>
+
+Everything above is what runs today. `docs/architecture/` has a four-part design review of what a larger version of this project could look like: an agentic remediation pipeline coordinating multiple specialized agents over an Agent-to-Agent (A2A) protocol, continuous deployment with GitOps and canary rollout, a formal privacy/security threat model, and platform-scale operations.
+
+It's written as a proposal, not a changelog. Every claim in it is tagged `(MEASURED)` when it's true of the code in this repo today, or `(TARGET)` when it's a design goal with nothing built behind it yet. That distinction is the whole point of the document: it exists to be clear about the gap between what's shipped and what's proposed, not to blur it.
+
+- [High-Level Architecture](docs/architecture/HIGH_LEVEL_ARCHITECTURE.md) - one diagram, shape legend and decision diamonds, the real CI flow and the target CD flow side by side
+- [Part A - Agentic Architecture & Auto-Remediation](docs/architecture/PART_A_AGENTIC_ARCHITECTURE_SECTIONS_1-33.md)
+- [Part B - Continuous Deployment & DevOps System Design](docs/architecture/PART_B_DEVOPS_SYSTEM_DESIGN_SECTIONS_34-114.md)
+- [Part C - Privacy, Security & Reliability](docs/architecture/PART_C_PRIVACY_SECURITY_PHILOSOPHY_SECTIONS_115-210.md)
+- [Part D - Product, Operations & Final Review](docs/architecture/PART_D_PRODUCT_OPERATIONS_SECTIONS_211-307.md)
+- [What I Deliberately Did Not Build](docs/architecture/WHAT_I_DID_NOT_BUILD.md) - Kubernetes, GitOps, Kafka, Terraform, Postgres, and more: what's out of scope today and why
+- [Target: Actions Runner Controller + Argo CD](docs/architecture/TARGET_ARC_AND_ARGOCD_DESIGN.md) - the concrete shape of the GitOps piece above, including why ARC can't host the macOS build job at all
+- [Architecture Decision Records](docs/adr/) - 8 ADRs on the parts that are real, each with alternatives and why they were rejected
+- [Runbooks](docs/runbooks/) - 5 operational runbooks for real failure modes, including the one that found and fixed an actual bug in `SandboxValidator`
+
+Three diagrams, drawn straight from the real code (not the target design):
+
+<img src="docs/assets/remediation-state-machine.svg" alt="Remediation state machine: patchProposed to validating to sandboxPassed/sandboxFailed to prOpened/prFailed/policyRejected" width="49%"> <img src="docs/assets/security-boundaries.svg" alt="Trust boundaries: untrusted input, LLM proposal, deterministic policy gate, sandbox, draft PR, human approval" width="49%">
+
+<img src="docs/assets/ci-pipeline.svg" alt="xctriage's own CI pipeline, read from .github/workflows/ci.yml" width="98%">
+
+</details>
+
+<details>
+<summary>Swift 6 concepts used</summary>
+
+Rather than a feature checklist, here is how each concept appears in the actual code:
+
+**`actor` for concurrent state**
+- `ClaudeClassifier`: actor protects concurrent URLSession calls; no data races possible on API key / model config
+- `XCResultParser`: actor wraps `Process` subprocess execution; multiple callers can't interleave xcresulttool spawns
+- `FlakyTestTracker`: actor serializes all SQLite reads/writes; replaces NSLock or DispatchQueue
+
+**`async/await` with `withCheckedThrowingContinuation`**
+- `XCResultParser.run()`: converts `Process.terminationHandler` callback to async; no nested completion handlers
+- `ClaudeClassifier.post()`: `URLSession.data(for:)` is async; entire network path is await-able
+
+**Typed `throws` / custom `Error` enum**
+- `TriageError: Error, Sendable`: all failure modes are named cases: `.xcresultToolFailed(Int32, String)`, `.claudeAPIError(Int, String)`, `.fileNotFound(String)`, `.parseError(String)`
+
+**`Sendable` throughout**
+- All model types are `Sendable` value types (`struct`, `enum`)
+- `DBHandle: @unchecked Sendable`: wraps `OpaquePointer` so actor `deinit` can close SQLite without violation
+
+**`Codable` for xcresult JSON**
+- `XCResultSummary`, `XCResultAction`, `XCResultIssueSummary`, `XCResultTestFailureSummary`: plain structs decoded against xcresulttool `--legacy` output after `unwrapLegacyEnvelope` strips Apple's `{"_type", "_value"/"_values"}` wrapper recursively, once, up front - rather than a custom `CodingKeys`/nested-wrapper-type per field
+
+**`NSRegularExpression` at module level**
+- All 9 patterns compiled once in `BuildLogParser` static constants: avoids per-call recompilation across every build log line
+
+**`CommandConfiguration` + `AsyncParsableCommand`**
+- `swift-argument-parser` integration for `analyze`, `remediate`, and `flaky` subcommands with typed flags and options
+
+</details>
+
+<details>
+<summary>Run the tests</summary>
+
+```bash
+swift test                          # 216 tests
 swift test --enable-code-coverage   # with coverage
 swift build -c release              # build binary
 bash scripts/make_demo.sh           # run demo fixtures
 ```
+
+</details>

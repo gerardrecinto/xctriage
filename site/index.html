@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xctriage: from xcodebuild failed to root cause</title>
+<meta name="description" content="Paste an xcodebuild log and see which of the Swift tool’s rules match, which one wins, and the suggested fix. The rule table is read from the source.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0ea5e9">
+<link rel="canonical" href="https://gerardrecinto.github.io/xctriage/">
+<meta property="og:title" content="xctriage: from xcodebuild failed to root cause">
+<meta property="og:url" content="https://gerardrecinto.github.io/xctriage/">
+<meta property="og:image" content="https://gerardrecinto.github.io/xctriage/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="xctriage: name the xcodebuild failure before you scroll the log">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="xctriage: from xcodebuild failed to root cause">
+<meta name="twitter:description" content="Paste an xcodebuild log and see which of the Swift tool’s rules match, which one wins, and the suggested fix.">
+<meta name="twitter:image" content="https://gerardrecinto.github.io/xctriage/og.png">
+<meta property="og:description" content="Paste an xcodebuild log and see which of the Swift tool’s rules match, which one wins, and the suggested fix. The rule table is read from the source.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="xctriage">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230ea5e9'/%3E%3Ccircle cx='16' cy='16' r='6' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
+<style>
+
+:root{--bg:#f8fafc;--panel:#fff;--panel2:#f1f5f9;--line:#e2e8f0;--fg:#0f172a;--mute:#475569;--brand:#0369a1;--brand-bg:#e0f2fe;--ok:#047857;--ok-bg:#d1fae5;--err:#b91c1c;--err-bg:#fee2e2;--code:#0b1220;--code-fg:#e2e8f0}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#070d1a;--panel:#0d1526;--panel2:#111c33;--line:#1e2b47;--fg:#e8eefc;--mute:#9fb0cc;--brand:#38bdf8;--brand-bg:#082f49;--ok:#34d399;--ok-bg:#06382b;--err:#fca5a5;--err-bg:#3b1212}}
+:root[data-theme=dark]{--bg:#070d1a;--panel:#0d1526;--panel2:#111c33;--line:#1e2b47;--fg:#e8eefc;--mute:#9fb0cc;--brand:#38bdf8;--brand-bg:#082f49;--ok:#34d399;--ok-bg:#06382b;--err:#fca5a5;--err-bg:#3b1212}
+*{box-sizing:border-box}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand)}
+code,pre,textarea,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:56px;gap:12px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--fg);text-decoration:none}
+.logo i{width:22px;height:22px;border-radius:6px;background:#0ea5e9;display:inline-block}
+nav .links{display:flex;gap:18px;align-items:center;font-size:14px}
+nav .links a{color:var(--mute);text-decoration:none}
+nav .links a:hover{color:var(--fg)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;font-weight:600;text-decoration:none;border:1px solid var(--line);color:var(--fg);background:var(--panel);cursor:pointer;font-size:15px}
+.btn.primary{background:#0ea5e9;border-color:#0ea5e9;color:#032132}
+.btn.primary:hover{background:#38bdf8}
+.btn:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid #0ea5e9;outline-offset:2px}
+.hero{padding:72px 0 40px;text-align:center}
+.pill{display:inline-block;font-size:13px;color:var(--brand);background:var(--brand-bg);padding:4px 12px;border-radius:99px;margin-bottom:20px;font-weight:600}
+h1{font-size:clamp(34px,6vw,58px);line-height:1.08;margin:0 0 18px;letter-spacing:-.02em}
+h1 em{font-style:normal;color:var(--brand)}
+.lede{max-width:700px;margin:0 auto 28px;color:var(--mute);font-size:18px}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.stats{display:flex;gap:28px;justify-content:center;flex-wrap:wrap;margin-top:36px;color:var(--mute);font-size:14px}
+.stats b{display:block;color:var(--fg);font-size:22px}
+section{padding:56px 0}
+h2{font-size:clamp(26px,4vw,36px);margin:0 0 8px;letter-spacing:-.01em}
+.sub{color:var(--mute);margin:0 0 28px;max-width:720px}
+.lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.lab{grid-template-columns:minmax(0,1fr)}nav .links .hide-s{display:none}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-width:0}
+.card h3{margin:0;padding:12px 16px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.tools{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font:600 12px system-ui;padding:8px 12px;min-height:32px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer;text-transform:none;letter-spacing:0}
+.chip[aria-pressed=true]{background:var(--brand-bg);border-color:var(--brand);color:var(--brand)}
+#log{display:block;width:100%;height:420px;border:0;padding:12px 14px;font-size:12.5px;line-height:1.55;background:var(--code);color:var(--code-fg);resize:vertical;white-space:pre;overflow:auto}
+.src{display:flex;gap:8px;align-items:center;padding:10px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--mute);flex-wrap:wrap}
+.out{min-height:420px}
+.status{padding:16px;color:var(--mute);font-size:14px}
+.verdict{padding:18px 16px;border-bottom:1px solid var(--line);background:var(--err-bg)}
+.verdict.unknown{background:var(--panel2)}
+.verdict b{display:block;font-size:20px;text-transform:uppercase;letter-spacing:.04em;color:var(--err)}
+.verdict.unknown b{color:var(--mute)}
+.verdict span{font-size:14px;color:var(--mute)}
+.sec{padding:14px 16px;border-bottom:1px solid var(--line)}
+.sec:last-child{border-bottom:0}
+.sec h4{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.bar{height:10px;border-radius:99px;background:var(--panel2);overflow:hidden;max-width:260px;display:inline-block;vertical-align:middle;margin-right:10px;width:60%}
+.bar i{display:block;height:100%;background:#0ea5e9}
+.site{padding:8px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+.site:last-child{border:0}
+.site code{background:var(--panel2);padding:1px 6px;border-radius:5px;font-size:12px}
+.fix{background:var(--ok-bg);color:var(--ok);padding:10px 12px;border-radius:8px;font-size:14px}
+.note{font-size:13px;color:var(--mute);margin-top:12px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:860px){.steps{grid-template-columns:minmax(0,1fr)}}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.step .n{width:28px;height:28px;border-radius:8px;background:var(--brand-bg);color:var(--brand);display:grid;place-items:center;font-weight:700;margin-bottom:10px}
+.step h3{margin:0 0 6px;font-size:17px}
+.step p{margin:0;color:var(--mute);font-size:15px}
+.tw{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow-x:auto;max-width:100%}
+table{width:100%;min-width:560px;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);background:var(--panel2)}
+tr:last-child td{border-bottom:0}
+td:first-child{font-family:ui-monospace,monospace;font-weight:700;white-space:nowrap}
+.pl{font-size:13px;color:var(--mute);margin:6px 0 10px}.pl b{font-weight:600}
+.rl{margin-top:16px}.rl summary{cursor:pointer;color:var(--brand);font-weight:600;padding:6px 0}.hero .cta a:not(.btn){align-self:center;font-weight:600}
+.install pre{background:var(--code);color:var(--code-fg);padding:16px 84px 16px 16px;border-radius:12px;overflow-x:auto;font-size:13.5px;margin:0 0 12px}
+.cols2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:860px){.cols2{grid-template-columns:minmax(0,1fr)}}
+.limits{background:var(--panel);border:1px solid var(--line);border-left:4px solid #f59e0b;border-radius:10px;padding:16px 20px}
+.limits ul{margin:8px 0 0;padding-left:20px;color:var(--mute)}
+footer{border-top:1px solid var(--line);padding:32px 0;color:var(--mute);font-size:14px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.in{display:block;width:100%;height:300px;border:0;padding:12px 14px;font:12.5px/1.55 ui-monospace,monospace;background:var(--code);color:var(--code-fg);resize:vertical;white-space:pre;overflow:auto}
+.vd{padding:16px;border-bottom:1px solid var(--line);background:var(--err-bg)}
+.vd.unknown{background:var(--panel2)}
+.vd b{display:block;font-size:20px;text-transform:uppercase;letter-spacing:.04em;color:var(--err)}
+.vd.unknown b{color:var(--mute)}
+.vd span{font-size:14px;color:var(--mute)}
+.bar{height:10px;border-radius:99px;background:var(--panel2);overflow:hidden;max-width:260px;display:inline-block;vertical-align:middle;margin-right:10px;width:60%}
+.bar i{display:block;height:100%;background:var(--brand)}
+.fix{background:var(--ok-bg);color:var(--ok);padding:10px 12px;border-radius:8px;font-size:14px}
+.m{display:flex;gap:8px;align-items:baseline;padding:5px 0;font-size:13.5px;flex-wrap:wrap}
+.m .t{font:700 11px ui-monospace,monospace;padding:2px 8px;border-radius:6px;background:var(--panel2);color:var(--mute)}
+.m .t.w{background:var(--brand-bg);color:var(--brand)}
+.ev{font:12px ui-monospace,monospace;background:var(--panel2);padding:4px 8px;border-radius:6px;margin:3px 0;overflow-wrap:anywhere}
+.ev i{color:var(--mute);font-style:normal;margin-right:8px}
+.sim{display:inline-block;font:700 11px ui-monospace,monospace;color:var(--brand);background:var(--brand-bg);padding:2px 8px;border-radius:6px;margin-left:8px;letter-spacing:0;text-transform:none}
+td.p{font:12px ui-monospace,monospace;overflow-wrap:anywhere;min-width:220px}
+.skip{position:absolute;left:8px;top:-60px;z-index:9;background:var(--panel);color:var(--fg);padding:8px 14px;border-radius:8px;border:1px solid var(--line)}
+.skip:focus{top:8px}
+.copy{position:absolute;top:8px;right:8px;font:600 12px system-ui;padding:6px 12px;min-height:32px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:var(--code-fg);cursor:pointer}
+.copy:hover{background:#334155}
+.cb{position:relative;margin:0 0 12px}.cb pre{margin:0}
+.qs{margin:0 0 8px;color:var(--mute);font-size:14px}
+.tw:focus-visible{outline:2px solid #0ea5e9;outline-offset:2px}
+.btn,.chip,.copy,.step{transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .18s ease}
+.btn:hover,.step:hover{transform:translateY(-2px)}
+.btn:active{transform:none}
+@media (prefers-reduced-motion:no-preference){
+.js .rv{opacity:0;transform:translateY(18px);transition:opacity .55s ease-out,transform .55s ease-out;transition-delay:var(--d,0s)}
+.js .rv.vis{opacity:1;transform:none}
+@supports (animation-timeline:scroll()){
+.hero .wrap{animation:hf linear both;animation-timeline:scroll(root block);animation-range:0 420px}
+@keyframes hf{to{opacity:.35;transform:translateY(-14px) scale(.98)}}}
+}
+@media (prefers-reduced-motion:reduce){.btn,.chip,.copy,.step{transition:none}.btn:hover,.step:hover{transform:none}}
+</style>
+</head>
+<body>
+<a class="skip" href="#try">Skip to the demo</a>
+<nav><div class="wrap">
+  <a class="logo" href="#top"><i></i>xctriage</a>
+  <div class="links"><a href="#try" class="hide-s">Demo</a><a href="#install" class="hide-s">Install</a><a class="btn" href="https://github.com/gerardrecinto/xctriage">GitHub</a></div>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <h1>Name the <em>xcodebuild</em> failure before you scroll the log.</h1>
+  <p class="lede">xctriage reads a failed Xcode build log and tells you the likely cause and a fix to try.</p>
+  <div class="cta"><a class="btn primary" href="#try">Try it on a log</a><a href="https://github.com/gerardrecinto/xctriage">View source</a></div>
+</div></header>
+
+<section id="try"><div class="wrap rv">
+  <h2>Paste a failed build log</h2>
+  <p class="sub">A sample is loaded. Edit it or pick another. It runs in your browser and nothing is uploaded.</p>
+  <div class="lab">
+    <div class="card"><h3><span>build.log</span><span class="tools" id="smp" role="group" aria-label="Sample logs"><button class="chip" data-s="compile" aria-pressed="true">Compile failure</button><button class="chip" data-s="test" aria-pressed="false">Test failure</button><button class="chip" data-s="oom" aria-pressed="false">Out of memory</button><button class="chip" data-s="sim" aria-pressed="false">Simulator</button></span></h3>
+      <label class="sr" for="log">Build log</label><textarea class="in" id="log" spellcheck="false" wrap="off"></textarea></div>
+    <div class="card" id="rep" aria-live="polite"><h3><span>Triage <span class="sim">RULES + LINE FILTER PORTED TO JS</span></span></h3><div class="status" id="boot">Loading the rules...</div></div>
+  </div>
+  <details class="rl"><summary id="rn">Rules</summary>
+    <p class="pl">Each rule is a pattern for one kind of failure, and the strongest match names the cause.</p>
+    <div class="tw" style="max-height:420px;overflow:auto" tabindex="0" role="region" aria-label="Classifier rule table"><table><thead><tr><th>Category</th><th>Weight</th><th>Pattern</th><th>Summary</th></tr></thead><tbody id="rt"></tbody></table></div>
+  </details>
+</div></section>
+
+<section id="install" class="install"><div class="wrap rv">
+  <h2>Run the real tool</h2>
+  <p class="sub">Needs macOS 14 or later with Swift 6. The first block runs it on a sample log from the repo.</p>
+  <div class="cols2">
+    <div>
+      <p class="qs">Build from source and triage the sample compile failure</p>
+      <div class="cb"><pre id="c1">git clone https://github.com/gerardrecinto/xctriage.git
+cd xctriage
+swift build -c release
+.build/release/xctriage analyze \
+  Tests/XCTriageKitTests/Fixtures/xcodebuild_compile_failure.log \
+  --source xcodebuild</pre><button class="copy" data-c="c1" type="button">Copy</button></div>
+    </div>
+    <div>
+      <p class="qs">Or use the release binary (arm64 macOS) on your own log</p>
+      <div class="cb"><pre id="c2">curl -L https://github.com/gerardrecinto/xctriage/releases/latest/download/xctriage-macos.zip -o xctriage.zip
+unzip xctriage.zip
+./xctriage analyze xcbuild.log --source xcodebuild</pre><button class="copy" data-c="c2" type="button">Copy</button></div>
+      <p class="note">Add <code>--llm</code> for the Claude fallback. It needs your own <code>XCTRIAGE_ANTHROPIC_API_KEY</code>; this page never calls it. <code>swift test</code> runs the suite.</p>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap rv">
+  <div class="limits"><strong>What this page is not</strong>
+    <p class="pl"><b>Rules and confidence. </b> The score is how strong the best matching rule is, not a chance of being right.</p>
+    <ul>
+    <li>The demo applies the tool's rule table and a port of its line filter in JavaScript. The Swift tool itself does not run here.</li>
+    <li>Confidence is the winning rule's weight, not a probability. A log no rule matches comes back as unknown at 0%, which is when the optional <code>--llm</code> fallback applies.</li>
+    </ul>
+    <p class="pl"><b>Flaky tracking. </b> The tool remembers which tests fail on and off, so you can spot the unreliable ones.</p>
+    <p class="pl"><b>Xcode result files (xcresult). </b> Xcode can save a test run as one bundle, and the tool can read it. Both need the real tool on a Mac, so neither runs on this page.</p>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <span>xctriage. Built by <a href="https://github.com/gerardrecinto">Gerard Recinto</a>.</span>
+  <span><a href="https://github.com/gerardrecinto/xctriage">Source</a> &middot; <a href="https://github.com/gerardrecinto/xctriage/releases">Releases</a></span>
+</div></footer>
+
+<script>
+(() => {
+  const mo = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (mo && "IntersectionObserver" in window) {
+    document.documentElement.classList.add("js");
+    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("vis"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -8% 0px" });
+    document.querySelectorAll(".rv").forEach((el) => io.observe(el));
+  }
+  document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => {
+    const el = document.getElementById(b.dataset.c), t = el.textContent;
+    const done = (m) => { b.textContent = m; setTimeout(() => { b.textContent = "Copy"; }, 1600); };
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => done("Copied"), () => { const r = document.createRange(); r.selectNodeContents(el); const g = getSelection(); g.removeAllRanges(); g.addRange(r); done("Press Cmd+C"); });
+  }));
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const track = (n) => { try { if (window.plausible) window.plausible(n); } catch (e) {} };
+  const mk = (p) => { try { return new RegExp(p.replace(/^\(\?i\)/, ""), /^\(\?i\)/.test(p) ? "i" : ""); } catch (e) { return null; } };
+  let rules = [], timer = null;
+  const SAMPLES = {};
+
+  // Mirrors BuildLogParser.detectLevel + extractFailureContext: the Swift tool
+  // classifies only the error/warning lines before the first failure marker,
+  // not the whole log.
+  const L = { sw: /^(.+\.(?:swift|m|mm|c|cpp|h)):(\d+):(\d+):\s+(error|warning|note):\s+(.+)$/, br: /\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*/, ld: /^ld: (.+)/, ge: /^error:\s+(.+)/i, pe: /(permission denied|access denied|operation not permitted|ScriptSecurityException|RejectedAccessException|scripts not permitted|403 Forbidden|401 Unauthorized|EACCES|EPERM)/i, tf: /Test Case '(.+?)' failed \(([0-9.]+) seconds\)/, fe: /^(.+\.swift):(\d+): (?:Fatal error|Precondition failed|Assertion failed):\s*(.+)$/, cs: /(EXC_BAD_ACCESS|EXC_BREAKPOINT|EXC_CRASH|signal SIGABRT|signal SIGSEGV|signal SIGILL|libc\+\+abi|AddressSanitizer:|ThreadSanitizer:|UndefinedBehaviorSanitizer:)/i };
+  function level(raw) {
+    const m = L.sw.exec(raw); if (m) return m[4];
+    const b = L.br.exec(raw); if (b) return b[2] === "FAILED" ? "error" : "info";
+    return (L.ld.test(raw) || L.ge.test(raw) || L.pe.test(raw) || L.tf.test(raw) || L.fe.test(raw) || L.cs.test(raw)) ? "error" : null;
+  }
+  function context(text) {
+    const es = text.split("\n").map((raw) => ({ m: raw.replace(/^[ \t]+|[ \t]+$/g, ""), lv: level(raw) }));
+    const i = es.findIndex((e) => { const b = L.br.exec(e.m); return b ? b[2] === "FAILED" : L.pe.test(e.m); });
+    return (i < 0 ? es.filter((e) => e.lv === "error") : es.slice(0, i).filter((e) => e.lv === "error" || e.lv === "warning")).map((e) => e.m);
+  }
+  function classify(text) {
+    const matched = []; let best = null;
+    rules.forEach((r) => { if (r.re && r.re.test(text)) { matched.push(r); if (!best || r.weight > best.weight) best = r; } });
+    return { best, matched };
+  }
+  function run() {
+    if (!rules.length) return; const ctx = context($("log").value), { best, matched } = classify(ctx.join("\n")), lines = ctx.length;
+    const head = '<h3><span>Triage <span class="sim">RULES + LINE FILTER PORTED TO JS</span></span></h3>';
+    if (!best) { $("rep").innerHTML = head + `<div class="vd unknown"><b>unknown</b><span>${lines ? "Scanned " + lines + " log line(s); no known failure signature matched" : "No error lines found before the failure marker (0 lines parsed)"}</span></div><div class="sec"><h4>Confidence</h4><span class="bar"><i style="width:0"></i></span><b>0%</b><div class="note">This is the case the optional <code>--llm</code> fallback is for.</div></div>`; return; }
+    $("rep").innerHTML = head + `<div class="vd"><b>${esc(best.category.replace(/([A-Z])/g, " $1"))}</b><span>${esc(best.summary)}</span></div>
+      <div class="sec"><h4>Confidence</h4><span class="bar"><i style="width:${Math.round(best.weight * 100)}%"></i></span><b>${Math.round(best.weight * 100)}%</b></div>
+      <div class="sec"><h4>Suggested fix</h4><div class="fix">${esc(best.fix)}</div></div>
+      <div class="sec"><h4>${matched.length} rule${matched.length === 1 ? "" : "s"} matched</h4>${matched.map((r) => `<div class="m"><span class="t ${r === best ? "w" : ""}">${r === best ? "WINNER" : "matched"}</span>${Math.round(r.weight * 100)}% ${esc(r.summary)}</div>`).join("")}</div>`;
+  }
+  $("log").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { run(); track("xt_edit"); }, 250); });
+  document.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { $("log").value = SAMPLES[b.dataset.s]; document.querySelectorAll("[data-s]").forEach((x) => x.setAttribute("aria-pressed", x === b)); run(); track("xt_sample"); }));
+  Promise.all([fetch("rules.json").then((r) => r.json()), fetch("logs/compile.log").then((r) => r.text()), fetch("logs/test.log").then((r) => r.text())]).then(([rs, c, t]) => {
+    rules = rs.map((r) => ({ ...r, re: mk(r.pattern) }));
+    SAMPLES.compile = c; SAMPLES.test = t;
+    SAMPLES.oom = "Compiling Renderer.swift\nerror: Out of memory: build agent killed by memory pressure (signal 9)\n** BUILD FAILED **\n";
+    SAMPLES.sim = "Testing started\nerror: xcrun simctl boot 'iPhone 15' failed: Unable to boot device in current state: Shutdown\nerror: Simulator boot timeout after 120 seconds\n** TEST FAILED **\n";
+    $("rn").textContent = "See all " + rules.length + " rules (highest weight wins, first wins a tie)";
+    $("rt").innerHTML = rules.map((r) => `<tr><td>${esc(r.category)}</td><td>${Math.round(r.weight * 100)}%</td><td class="p">${esc(r.pattern)}</td><td>${esc(r.summary)}</td></tr>`).join("");
+    $("log").value = SAMPLES.compile; document.querySelector("[data-s=compile]").setAttribute("aria-pressed", "true"); window.__XT_READY__ = true; run();
+  }).catch(() => { $("boot").textContent = "The rule table did not load. The README lists the categories."; });
+
+})();
+</script>
+</body>
+</html>
