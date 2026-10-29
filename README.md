@@ -425,3 +425,5 @@ npm run test:site
 ```
 
 </details>
+
+Optional paid help: [scoped reviews and setup](SUPPORT.md).
