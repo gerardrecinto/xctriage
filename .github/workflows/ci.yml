@@ -31,7 +31,7 @@ jobs:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
 
   trivy:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
