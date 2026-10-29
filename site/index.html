@@ -93,6 +93,8 @@ th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vert
 th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);background:var(--panel2)}
 tr:last-child td{border-bottom:0}
 td:first-child{font-family:ui-monospace,monospace;font-weight:700;white-space:nowrap}
+.pl{font-size:13px;color:var(--mute);margin:6px 0 10px}.pl b{font-weight:600}
+.rl{margin-top:16px}.rl summary{cursor:pointer;color:var(--brand);font-weight:600;padding:6px 0}.hero .cta a:not(.btn){align-self:center;font-weight:600}
 .install pre{background:var(--code);color:var(--code-fg);padding:16px 84px 16px 16px;border-radius:12px;overflow-x:auto;font-size:13.5px;margin:0 0 12px}
 .cols2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 @media (max-width:860px){.cols2{grid-template-columns:minmax(0,1fr)}}
@@ -142,46 +144,32 @@ td.p{font:12px ui-monospace,monospace;overflow-wrap:anywhere;min-width:220px}
 <a class="skip" href="#try">Skip to the demo</a>
 <nav><div class="wrap">
   <a class="logo" href="#top"><i></i>xctriage</a>
-  <div class="links"><a href="#try" class="hide-s">Try it</a><a href="#rules" class="hide-s">Rules</a><a href="#install" class="hide-s">Install</a><a class="btn" href="https://github.com/gerardrecinto/xctriage">GitHub</a></div>
+  <div class="links"><a href="#try" class="hide-s">Demo</a><a href="#install" class="hide-s">Install</a><a class="btn" href="https://github.com/gerardrecinto/xctriage">GitHub</a></div>
 </div></nav>
 
 <header class="hero" id="top"><div class="wrap">
   <h1>Name the <em>xcodebuild</em> failure before you scroll the log.</h1>
-  <p class="lede">A Swift 6 command-line tool that classifies Apple-platform CI failures with weighted rules, reads xcresult bundles, tracks flaky tests, and asks Claude only when the rules are unsure.</p>
-  <div class="cta"><a class="btn primary" href="#try">Triage a log</a><a class="btn" href="#rules">See the rules</a></div>
-  <div class="stats"><div><b id="n-rules">21</b>classification rules</div><div><b>8</b>failure categories</div><div><b>0</b>uploads from this page</div></div>
+  <p class="lede">xctriage reads a failed Xcode build log and tells you the likely cause and a fix to try.</p>
+  <div class="cta"><a class="btn primary" href="#try">Try it on a log</a><a href="https://github.com/gerardrecinto/xctriage">View source</a></div>
 </div></header>
 
-
 <section id="try"><div class="wrap rv">
-  <h2>Triage an xcodebuild failure</h2>
-  <p class="sub">The rule table below is read from the Swift source at deploy time. This page runs those same patterns with your browser’s regex engine and picks the winner the way the Swift classifier does: the matching rule with the highest weight. The Swift tool uses NSRegularExpression, and the line filter is a hand port of BuildLogParser, so unusual input could differ. Nothing you paste leaves the tab.</p>
+  <h2>Paste a failed build log</h2>
+  <p class="sub">A sample is loaded. Edit it or pick another. It runs in your browser and nothing is uploaded.</p>
   <div class="lab">
     <div class="card"><h3><span>build.log</span><span class="tools" id="smp" role="group" aria-label="Sample logs"><button class="chip" data-s="compile" aria-pressed="true">Compile failure</button><button class="chip" data-s="test" aria-pressed="false">Test failure</button><button class="chip" data-s="oom" aria-pressed="false">Out of memory</button><button class="chip" data-s="sim" aria-pressed="false">Simulator</button></span></h3>
       <label class="sr" for="log">Build log</label><textarea class="in" id="log" spellcheck="false" wrap="off"></textarea></div>
     <div class="card" id="rep" aria-live="polite"><h3><span>Triage <span class="sim">RULES + LINE FILTER PORTED TO JS</span></span></h3><div class="status" id="boot">Loading the rules...</div></div>
   </div>
-</div></section>
-
-<section><div class="wrap rv">
-  <h2>How it works</h2>
-  <p class="sub">Rules first, because most CI failures repeat. A model is the fallback, not the default.</p>
-  <div class="steps">
-    <div class="step" style="--d:0.00s"><div class="n">1</div><h3>Parse</h3><p>Console output from xcodebuild, or a <code>.xcresult</code> bundle read through <code>xcresulttool</code>, becomes log entries with file, line and column.</p></div>
-    <div class="step" style="--d:0.08s"><div class="n">2</div><h3>Classify</h3><p>Weighted regex rules vote. The strongest match sets the category, the root cause and the suggested fix. Below 60% confidence, <code>--llm</code> asks Claude.</p></div>
-    <div class="step" style="--d:0.16s"><div class="n">3</div><h3>Track and report</h3><p>An actor-based SQLite tracker scores flaky tests over 90 days. Output goes to the terminal, JSON, SARIF, Slack or a GitHub pull request.</p></div>
-  </div>
-</div></section>
-
-<section id="rules"><div class="wrap rv">
-  <h2>The rule table</h2>
-  <p class="sub" id="rn">Loading...</p>
-  <div class="tw" style="max-height:520px;overflow:auto" tabindex="0" role="region" aria-label="Classifier rule table"><table><thead><tr><th>Category</th><th>Weight</th><th>Pattern</th><th>Summary</th></tr></thead><tbody id="rt"></tbody></table></div>
+  <details class="rl"><summary id="rn">Rules</summary>
+    <p class="pl"><b>In plain words:</b> each rule is a pattern for one kind of failure, and the strongest match names the cause.</p>
+    <div class="tw" style="max-height:420px;overflow:auto" tabindex="0" role="region" aria-label="Classifier rule table"><table><thead><tr><th>Category</th><th>Weight</th><th>Pattern</th><th>Summary</th></tr></thead><tbody id="rt"></tbody></table></div>
+  </details>
 </div></section>
 
 <section id="install" class="install"><div class="wrap rv">
-  <h2>Run it</h2>
-  <p class="sub">Swift 6 on macOS 14 or later. The first block runs the real tool on the sample log that ships in the repo.</p>
+  <h2>Run the real tool</h2>
+  <p class="sub">Needs macOS 14 or later with Swift 6. The first block runs it on a sample log from the repo.</p>
   <div class="cols2">
     <div>
       <p class="qs">Build from source and triage the sample compile failure</p>
@@ -203,13 +191,16 @@ unzip xctriage.zip
 </div></section>
 
 <section><div class="wrap rv">
-  <div class="limits"><strong>What this does not do</strong><ul>
-    <li>The Swift tool cannot run in a browser. This page re-runs its rule table and a port of the log line filter, not the full parser, the xcresult reader, the tracker or the LLM path.</li>
-    <li>Confidence is the winning rule's weight, not a calibrated probability.</li>
-    <li>A log no rule matches comes back as unknown with 0% confidence, which is when the optional LLM fallback applies.</li>
-  </ul></div>
+  <div class="limits"><strong>What this page is not</strong>
+    <p class="pl"><b>Rules and confidence. In plain words:</b> the score is how strong the best matching rule is, not a chance of being right.</p>
+    <ul>
+    <li>The demo applies the tool's rule table and a port of its line filter in JavaScript. The Swift tool itself does not run here.</li>
+    <li>Confidence is the winning rule's weight, not a probability. A log no rule matches comes back as unknown at 0%, which is when the optional <code>--llm</code> fallback applies.</li>
+    </ul>
+    <p class="pl"><b>Flaky tracking. In plain words:</b> the tool remembers which tests fail on and off, so you can spot the unreliable ones.</p>
+    <p class="pl"><b>Xcode result files (xcresult). In plain words:</b> Xcode can save a test run as one bundle, and the tool can read it. Both need the real tool on a Mac, so neither runs on this page.</p>
+  </div>
 </div></section>
-
 
 <footer><div class="wrap">
   <span>xctriage. Built by <a href="https://github.com/gerardrecinto">Gerard Recinto</a>.</span>
@@ -272,7 +263,7 @@ unzip xctriage.zip
     SAMPLES.compile = c; SAMPLES.test = t;
     SAMPLES.oom = "Compiling Renderer.swift\nerror: Out of memory: build agent killed by memory pressure (signal 9)\n** BUILD FAILED **\n";
     SAMPLES.sim = "Testing started\nerror: xcrun simctl boot 'iPhone 15' failed: Unable to boot device in current state: Shutdown\nerror: Simulator boot timeout after 120 seconds\n** TEST FAILED **\n";
-    $("n-rules").textContent = rules.length; $("rn").textContent = rules.length + " rules, read from RuleClassifier.swift at deploy time. The highest weight wins, and the first rule wins a tie.";
+    $("rn").textContent = "See all " + rules.length + " rules (highest weight wins, first wins a tie)";
     $("rt").innerHTML = rules.map((r) => `<tr><td>${esc(r.category)}</td><td>${Math.round(r.weight * 100)}%</td><td class="p">${esc(r.pattern)}</td><td>${esc(r.summary)}</td></tr>`).join("");
     $("log").value = SAMPLES.compile; document.querySelector("[data-s=compile]").setAttribute("aria-pressed", "true"); window.__XT_READY__ = true; run();
   }).catch(() => { $("boot").textContent = "The rule table did not load. The README lists the categories."; });
