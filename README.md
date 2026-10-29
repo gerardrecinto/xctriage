@@ -8,7 +8,7 @@ xctriage reads a failed Xcode or XCTest build log and tells you the likely cause
 
 ![demo](docs/assets/demo.gif)
 
-## Try it in 60 seconds
+## Try it on a sample log
 
 You need macOS 14 or later with Swift 6 (comes with a current Xcode).
 
@@ -20,7 +20,7 @@ swift build -c release
   Tests/XCTriageKitTests/Fixtures/xcodebuild_compile_failure.log --source xcodebuild
 ```
 
-The build takes about 30 seconds. The last command analyzes a sample log that ships in the repo. To analyze your own log, replace the path.
+The first build downloads dependencies; its duration depends on your machine and network. The last command analyzes a sample log that ships in the repo. To analyze your own log, replace the path.
 
 To skip the build, download the arm64 macOS binary from [Releases](https://github.com/gerardrecinto/xctriage/releases) instead.
 
@@ -55,8 +55,8 @@ This is trimmed from a real run of the command above. The tool also prints the s
 It does:
 - Read `xcodebuild` console output, GitHub Actions logs, and `.xcresult` bundles (the last needs macOS with Xcode).
 - Match the log against 21 weighted regex rules and pick the highest weight. There are 8 failure categories, such as compilation error, test failure and runtime crash.
-- Optionally ask Claude when no rule is confident. Use `--llm` and your own `XCTRIAGE_ANTHROPIC_API_KEY`. Without `--llm`, nothing leaves your machine.
-- Keep a local SQLite record of failures to score flaky tests over 90 days.
+- Optionally ask Claude when no rule is confident. Use `--llm` and your own `XCTRIAGE_ANTHROPIC_API_KEY`. Terminal, JSON, SARIF and GitHub annotation output stay local unless you enable `--llm`. Slack output explicitly sends a report to your configured webhook.
+- Keep a local SQLite record of failures over 90 days. Scores show failure occurrences per recorded failing build, not a measured failure rate across passing and failing runs.
 - Print to the terminal, or output JSON, SARIF, GitHub annotations or a Slack message.
 
 It does not:
@@ -290,7 +290,7 @@ $ xctriage analyze xcbuild.log --source xcodebuild --llm
 
 The included `Jenkinsfile` and `.github/workflows/ci.yml` both run xctriage on their own build output: a self-triaging pipeline that classifies its own failures instead of leaving that to whoever's on call.
 
-Both pipelines run the same checks in the same order: resolve, lint (SwiftLint), SAST (Semgrep in Jenkins, CodeQL in GitHub Actions since CodeQL isn't practical to self-host without a GHAS license), dependency/secret/misconfig scan (Trivy), build, test, auto-remediate, then archive a release binary on a tag.
+The Jenkins pipeline runs resolve, SwiftLint, Semgrep, Trivy, build, test and remediation stages. GitHub Actions runs build/test/remediation in one job, Trivy in another, and CodeQL in its own workflow. A separate tag-triggered release workflow builds and archives the macOS binary.
 
 A third workflow, `.github/workflows/claude-pr-review.yml`, is separate from both: it scores the PR diff itself (complexity, Swift 6 concurrency-safety, test coverage) on every pull request regardless of pass/fail, instead of reacting to a build/test failure. See `.github/scripts/pr_reviewer.py`.
 
@@ -301,7 +301,7 @@ A third workflow, `.github/workflows/claude-pr-review.yml`, is separate from bot
 Both pipelines classify test failures with Claude before deciding what to do about them, and both apply the same rule: **the LLM only picks the failure category, it never picks the action.**
 
 - A `flaky_test` verdict at 0.75+ confidence gets one automatic retry. If the retry passes, the build goes green and nobody gets paged for a flake.
-- A `compilation_error` verdict gets a policy-gated remediation attempt instead: `xctriage remediate` fingerprints the failure, re-checks it against `RemediationPolicy` (category allowlist, confidence floor, forbidden paths), asks Claude for exactly one single-file unified diff, and proves that diff by applying it inside an isolated `git worktree` and actually running `swift build` + `swift test` there. If policy or the sandbox rejects it - wrong shape, too many files, still doesn't build, still doesn't pass - the command exits non-zero and the pipeline falls through to the same Slack notification as any other unhandled category. Nothing here is ever applied to the working tree or opened as a PR; a passing proposal is archived as a build artifact for a human to read and apply by hand.
+- A `compilation_error` verdict gets a policy-gated remediation attempt instead: `xctriage remediate` fingerprints the failure, re-checks it against `RemediationPolicy` (category allowlist, confidence floor, forbidden paths), asks Claude for exactly one single-file unified diff, and proves that diff by applying it inside an isolated `git worktree` and actually running `swift build` + `swift test` there. If policy or the sandbox rejects it - wrong shape, too many files, still doesn't build, still doesn't pass - the command exits non-zero and the pipeline falls through to the same Slack notification as any other unhandled category. The original working tree is left unchanged. A passing proposal is archived as an artifact; the GitHub Actions workflow can also open a draft PR on same-repository runs. It never merges.
 - Every other category (dependency failure, OOM, timeout, infra failure) has no safe auto-fix, so the pipeline posts the LLM's suggested fix to Slack and leaves the build failed for a human.
 - The flaky retry only ever happens once, and the remediation attempt only ever proposes, never applies. There's no loop, no escalating retry count, and category eligibility is enforced by `RemediationPolicy` in code, not by pipeline logic trusting the model's word for it.
 
@@ -349,7 +349,7 @@ Nothing above is an inline literal buried in a step: the confidence threshold, l
 <details>
 <summary>Design docs and what is not built</summary>
 
-Everything above is what runs today. `docs/architecture/` has a four-part design review of what a larger version of this project could look like: an agentic remediation pipeline coordinating multiple specialized agents over an Agent-to-Agent (A2A) protocol, continuous deployment with GitOps and canary rollout, a formal privacy/security threat model, and platform-scale operations.
+The commands above describe implemented behavior; external services and CI credentials need your own configuration. `docs/architecture/` has a four-part design review of what a larger version of this project could look like: an agentic remediation pipeline coordinating multiple specialized agents over an Agent-to-Agent (A2A) protocol, continuous deployment with GitOps and canary rollout, a formal privacy/security threat model, and platform-scale operations.
 
 It's written as a proposal, not a changelog. Every claim in it is tagged `(MEASURED)` when it's true of the code in this repo today, or `(TARGET)` when it's a design goal with nothing built behind it yet. That distinction is the whole point of the document: it exists to be clear about the gap between what's shipped and what's proposed, not to blur it.
 
@@ -385,7 +385,7 @@ Rather than a feature checklist, here is how each concept appears in the actual 
 - `XCResultParser.run()`: converts `Process.terminationHandler` callback to async; no nested completion handlers
 - `ClaudeClassifier.post()`: `URLSession.data(for:)` is async; entire network path is await-able
 
-**Typed `throws` / custom `Error` enum**
+**Custom `Error` enum**
 - `TriageError: Error, Sendable`: all failure modes are named cases: `.xcresultToolFailed(Int32, String)`, `.claudeAPIError(Int, String)`, `.fileNotFound(String)`, `.parseError(String)`
 
 **`Sendable` throughout**
@@ -411,6 +411,15 @@ swift test                          # 216 tests
 swift test --enable-code-coverage   # with coverage
 swift build -c release              # build binary
 bash scripts/make_demo.sh           # run demo fixtures
+```
+
+The Pages demo has browser regression checks at mobile and desktop widths, including sample classification, accessibility, reduced motion, loading failures and JavaScript disabled:
+
+```bash
+npm ci --ignore-scripts
+npx playwright install --with-deps chromium firefox webkit
+python3 scripts/build_site.py
+npm run test:site
 ```
 
 </details>

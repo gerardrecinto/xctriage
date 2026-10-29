@@ -61,6 +61,7 @@ h2{font-size:clamp(26px,4vw,36px);margin:0 0 8px;letter-spacing:-.01em}
 .card h3{margin:0;padding:12px 16px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .tools{display:flex;gap:6px;flex-wrap:wrap}
 .chip{font:600 12px system-ui;padding:8px 12px;min-height:32px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer;text-transform:none;letter-spacing:0}
+.chip:disabled,.copy:disabled{cursor:default;opacity:.6}
 .chip[aria-pressed=true]{background:var(--brand-bg);border-color:var(--brand);color:var(--brand)}
 #log{display:block;width:100%;height:420px;border:0;padding:12px 14px;font-size:12.5px;line-height:1.55;background:var(--code);color:var(--code-fg);resize:vertical;white-space:pre;overflow:auto}
 .src{display:flex;gap:8px;align-items:center;padding:10px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--mute);flex-wrap:wrap}
@@ -126,7 +127,7 @@ td.p{font:12px ui-monospace,monospace;overflow-wrap:anywhere;min-width:220px}
 .copy:hover{background:#334155}
 .cb{position:relative;margin:0 0 12px}.cb pre{margin:0}
 .qs{margin:0 0 8px;color:var(--mute);font-size:14px}
-.tw:focus-visible{outline:2px solid #0ea5e9;outline-offset:2px}
+.tw:focus-visible,pre:focus-visible{outline:2px solid #0ea5e9;outline-offset:2px}
 .btn,.chip,.copy,.step{transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .18s ease}
 .btn:hover,.step:hover{transform:translateY(-2px)}
 .btn:active{transform:none}
@@ -135,7 +136,7 @@ td.p{font:12px ui-monospace,monospace;overflow-wrap:anywhere;min-width:220px}
 .js .rv.vis{opacity:1;transform:none}
 @supports (animation-timeline:scroll()){
 .hero .wrap{animation:hf linear both;animation-timeline:scroll(root block);animation-range:0 420px}
-@keyframes hf{to{opacity:.35;transform:translateY(-14px) scale(.98)}}}
+@keyframes hf{to{transform:translateY(-14px) scale(.98)}}}
 }
 @media (prefers-reduced-motion:reduce){.btn,.chip,.copy,.step{transition:none}.btn:hover,.step:hover{transform:none}}
 </style>
@@ -155,11 +156,12 @@ td.p{font:12px ui-monospace,monospace;overflow-wrap:anywhere;min-width:220px}
 
 <section id="try"><div class="wrap rv">
   <h2>Paste a failed build log</h2>
+  <noscript><p>The demo needs JavaScript. You can still <a href="#install">install the command-line tool</a> and analyze logs locally.</p></noscript>
   <p class="sub">A sample is loaded. Edit it or pick another. It runs in your browser and nothing is uploaded.</p>
   <div class="lab">
-    <div class="card"><h3><span>build.log</span><span class="tools" id="smp" role="group" aria-label="Sample logs"><button class="chip" data-s="compile" aria-pressed="true">Compile failure</button><button class="chip" data-s="test" aria-pressed="false">Test failure</button><button class="chip" data-s="oom" aria-pressed="false">Out of memory</button><button class="chip" data-s="sim" aria-pressed="false">Simulator</button></span></h3>
-      <label class="sr" for="log">Build log</label><textarea class="in" id="log" spellcheck="false" wrap="off"></textarea></div>
-    <div class="card" id="rep" aria-live="polite"><h3><span>Triage <span class="sim">RULES + LINE FILTER PORTED TO JS</span></span></h3><div class="status" id="boot">Loading the rules...</div></div>
+    <div class="card"><h3><span>build.log</span><span class="tools" id="smp" role="group" aria-label="Sample logs"><button class="chip" disabled data-s="compile" aria-pressed="true">Compile failure</button><button class="chip" disabled data-s="test" aria-pressed="false">Test failure</button><button class="chip" disabled data-s="oom" aria-pressed="false">Out of memory</button><button class="chip" disabled data-s="sim" aria-pressed="false">Simulator</button></span></h3>
+      <label class="sr" for="log">Build log</label><textarea class="in" id="log" disabled spellcheck="false" wrap="off"></textarea></div>
+    <div class="card" id="rep" aria-live="polite"><h3><span>Triage <span class="sim">RULES + LINE FILTER PORTED TO JS</span></span></h3><div class="status" id="boot">Loading the rules. If this does not finish, <a href="#install">run the command-line tool</a>.</div></div>
   </div>
   <details class="rl"><summary id="rn">Rules</summary>
     <p class="pl">Each rule is a pattern for one kind of failure, and the strongest match names the cause.</p>
@@ -173,18 +175,18 @@ td.p{font:12px ui-monospace,monospace;overflow-wrap:anywhere;min-width:220px}
   <div class="cols2">
     <div>
       <p class="qs">Build from source and triage the sample compile failure</p>
-      <div class="cb"><pre id="c1">git clone https://github.com/gerardrecinto/xctriage.git
+      <div class="cb"><pre id="c1" tabindex="0" role="region" aria-label="Build and run commands">git clone https://github.com/gerardrecinto/xctriage.git
 cd xctriage
 swift build -c release
 .build/release/xctriage analyze \
   Tests/XCTriageKitTests/Fixtures/xcodebuild_compile_failure.log \
-  --source xcodebuild</pre><button class="copy" data-c="c1" type="button">Copy</button></div>
+  --source xcodebuild</pre><button class="copy" disabled data-c="c1" type="button">Copy</button></div>
     </div>
     <div>
       <p class="qs">Or use the release binary (arm64 macOS) on your own log</p>
-      <div class="cb"><pre id="c2">curl -L https://github.com/gerardrecinto/xctriage/releases/latest/download/xctriage-macos.zip -o xctriage.zip
+      <div class="cb"><pre id="c2" tabindex="0" role="region" aria-label="Download and run commands">curl -L https://github.com/gerardrecinto/xctriage/releases/latest/download/xctriage-macos.zip -o xctriage.zip
 unzip xctriage.zip
-./xctriage analyze xcbuild.log --source xcodebuild</pre><button class="copy" data-c="c2" type="button">Copy</button></div>
+./xctriage analyze xcbuild.log --source xcodebuild</pre><button class="copy" disabled data-c="c2" type="button">Copy</button></div>
       <p class="note">Add <code>--llm</code> for the Claude fallback. It needs your own <code>XCTRIAGE_ANTHROPIC_API_KEY</code>; this page never calls it. <code>swift test</code> runs the suite.</p>
     </div>
   </div>
@@ -215,11 +217,11 @@ unzip xctriage.zip
     const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("vis"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -8% 0px" });
     document.querySelectorAll(".rv").forEach((el) => io.observe(el));
   }
-  document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".copy").forEach((b) => { b.disabled = false; b.addEventListener("click", () => {
     const el = document.getElementById(b.dataset.c), t = el.textContent;
     const done = (m) => { b.textContent = m; setTimeout(() => { b.textContent = "Copy"; }, 1600); };
     (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => done("Copied"), () => { const r = document.createRange(); r.selectNodeContents(el); const g = getSelection(); g.removeAllRanges(); g.addRange(r); done("Press Cmd+C"); });
-  }));
+  }); });
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -258,15 +260,17 @@ unzip xctriage.zip
   }
   $("log").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { run(); track("xt_edit"); }, 250); });
   document.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { $("log").value = SAMPLES[b.dataset.s]; document.querySelectorAll("[data-s]").forEach((x) => x.setAttribute("aria-pressed", x === b)); run(); track("xt_sample"); }));
-  Promise.all([fetch("rules.json").then((r) => r.json()), fetch("logs/compile.log").then((r) => r.text()), fetch("logs/test.log").then((r) => r.text())]).then(([rs, c, t]) => {
+  const load = (path, json = false) => fetch(path).then((r) => { if (!r.ok) throw new Error("Could not load " + path); return json ? r.json() : r.text(); });
+  Promise.all([load("rules.json", true), load("logs/compile.log"), load("logs/test.log")]).then(([rs, c, t]) => {
+    if (!Array.isArray(rs) || !rs.length || rs.some((r) => typeof r.pattern !== "string" || !Number.isFinite(r.weight))) throw new Error("Invalid rule table");
     rules = rs.map((r) => ({ ...r, re: mk(r.pattern) }));
     SAMPLES.compile = c; SAMPLES.test = t;
     SAMPLES.oom = "Compiling Renderer.swift\nerror: Out of memory: build agent killed by memory pressure (signal 9)\n** BUILD FAILED **\n";
     SAMPLES.sim = "Testing started\nerror: xcrun simctl boot 'iPhone 15' failed: Unable to boot device in current state: Shutdown\nerror: Simulator boot timeout after 120 seconds\n** TEST FAILED **\n";
     $("rn").textContent = "See all " + rules.length + " rules (highest weight wins, first wins a tie)";
     $("rt").innerHTML = rules.map((r) => `<tr><td>${esc(r.category)}</td><td>${Math.round(r.weight * 100)}%</td><td class="p">${esc(r.pattern)}</td><td>${esc(r.summary)}</td></tr>`).join("");
-    $("log").value = SAMPLES.compile; document.querySelector("[data-s=compile]").setAttribute("aria-pressed", "true"); window.__XT_READY__ = true; run();
-  }).catch(() => { $("boot").textContent = "The rule table did not load. The README lists the categories."; });
+    $("log").value = SAMPLES.compile; document.querySelector("[data-s=compile]").setAttribute("aria-pressed", "true"); $("log").disabled = false; document.querySelectorAll("[data-s]").forEach((b) => { b.disabled = false; }); window.__XT_READY__ = true; run();
+  }).catch(() => { $("boot").innerHTML = 'The demo could not load. <a href="#install">Run the command-line tool</a> on the sample log instead.'; });
 
 })();
 </script>
