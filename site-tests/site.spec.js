@@ -34,8 +34,8 @@ test('shows a useful fallback and disables controls when rules fail', async ({ p
   await expect(page.locator('#install')).toContainText('swift build -c release');
 });
 
-test('works as an install guide without JavaScript', async ({ browser }) => {
-  const context = await browser.newContext({ javaScriptEnabled: false });
+test('works as an install guide without JavaScript', async ({ browser, viewport }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport });
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:4197/');
   await expect(page.locator('noscript p')).toContainText('JavaScript');
