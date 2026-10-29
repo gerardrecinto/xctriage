@@ -270,7 +270,7 @@ unzip xctriage.zip
     $("rn").textContent = "See all " + rules.length + " rules (highest weight wins, first wins a tie)";
     $("rt").innerHTML = rules.map((r) => `<tr><td>${esc(r.category)}</td><td>${Math.round(r.weight * 100)}%</td><td class="p">${esc(r.pattern)}</td><td>${esc(r.summary)}</td></tr>`).join("");
     $("log").value = SAMPLES.compile; document.querySelector("[data-s=compile]").setAttribute("aria-pressed", "true"); $("log").disabled = false; document.querySelectorAll("[data-s]").forEach((b) => { b.disabled = false; }); window.__XT_READY__ = true; run();
-  }).catch(() => { $("boot").innerHTML = 'The demo could not load. <a href="#install">Run the command-line tool</a> on the sample log instead.'; });
+  }).catch((error) => { console.error("xctriage demo could not load:", error); $("boot").innerHTML = 'The demo could not load. <a href="#install">Run the command-line tool</a> on the sample log instead.'; });
 
 })();
 </script>

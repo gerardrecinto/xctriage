@@ -2,8 +2,10 @@ const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 
 test('classifies samples locally, handles edits, and meets WCAG AA', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto('/');
   await expect(page.locator('#rep')).toContainText('compilation Error');
   for (const [sample, category] of [['test', 'test Failure'], ['oom', 'resource Exhaustion'], ['sim', 'infra Failure']]) {
@@ -51,4 +53,11 @@ test('respects reduced motion and keyboard navigation', async ({ page, browserNa
   await page.keyboard.press('Enter');
   expect(await page.evaluate(() => location.hash)).toBe('#try');
   expect(await page.locator('.btn').first().evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s');
+});
+
+test('keeps hero text opaque while scrolling with motion enabled', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  await page.evaluate(() => scrollTo(0, 600));
+  await expect(page.locator('.hero .wrap')).toHaveCSS('opacity', '1');
 });
