@@ -16,13 +16,13 @@ jobs:
   analyze:
     runs-on: ${{ vars.MACOS_RUNNER || 'macos-15' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Select Xcode
         run: sudo xcode-select --switch /Applications/Xcode_${{ vars.XCODE_VERSION || '16.3' }}.app
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
         with:
           languages: swift
 
@@ -30,6 +30,6 @@ jobs:
         run: swift build
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
         with:
           category: "/language:swift"

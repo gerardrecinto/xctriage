@@ -20,7 +20,7 @@ swift build -c release
   Tests/XCTriageKitTests/Fixtures/xcodebuild_compile_failure.log --source xcodebuild
 ```
 
-The build takes about 30 seconds. The last command analyzes a sample log that ships in the repo. To analyze your own log, replace the path.
+The first build takes a few minutes. The last command analyzes a sample log that ships in the repo. To analyze your own log, replace the path.
 
 To skip the build, download the arm64 macOS binary from [Releases](https://github.com/gerardrecinto/xctriage/releases) instead.
 
@@ -54,8 +54,8 @@ This is trimmed from a real run of the command above. The tool also prints the s
 
 It does:
 - Read `xcodebuild` console output, GitHub Actions logs, and `.xcresult` bundles (the last needs macOS with Xcode).
-- Match the log against 21 weighted regex rules and pick the highest weight. There are 8 failure categories, such as compilation error, test failure and runtime crash.
-- Optionally ask Claude when no rule is confident. Use `--llm` and your own `XCTRIAGE_ANTHROPIC_API_KEY`. Without `--llm`, nothing leaves your machine.
+- Match the log against 21 weighted regex rules and pick the highest weight. There are 8 categories plus `unknown` (for example compilation error, test failure and runtime crash).
+- Optionally ask Claude when no rule is confident. Use `--llm` and your own `XCTRIAGE_ANTHROPIC_API_KEY`. Without `--llm`, nothing leaves your machine. With `--llm`, the log is redacted first by default; see [Privacy](#privacy-what-leaves-your-machine-with---llm).
 - Keep a local SQLite record of failures to score flaky tests over 90 days.
 - Print to the terminal, or output JSON, SARIF, GitHub annotations or a Slack message.
 
@@ -83,12 +83,12 @@ xctriage analyze build.xcresult
 # Read from stdin (pipe from xcodebuild)
 xcodebuild test -scheme MyApp 2>&1 | tee build.log | xctriage analyze - --source xcodebuild
 
-# Claude fallback when confidence < 0.60
+# Claude fallback when confidence < 0.60 (the log is redacted before it is sent)
 export XCTRIAGE_ANTHROPIC_API_KEY=sk-ant-...
-xctriage analyze xcbuild.log --source xcodebuild --llm
+xctriage analyze xcbuild.log --source xcodebuild --llm --redact
 
 # Always use Claude
-xctriage analyze xcbuild.log --source xcodebuild --llm-always
+xctriage analyze xcbuild.log --source xcodebuild --llm-always --redact
 
 # JSON output (pipe to jq, Jira, etc.)
 xctriage analyze xcbuild.log --source xcodebuild --output json | jq .classification
@@ -109,21 +109,34 @@ xctriage flaky --n 20
 # Exit with code 1 on failure: use in CI pipelines to gate merges
 xctriage analyze xcbuild.log --source xcodebuild --exit-code
 
-# Strip secrets/PII before the log reaches Claude
+# Redaction is the default with --llm; this also prints what was stripped
 xctriage analyze xcbuild.log --source xcodebuild --llm --redact --redaction-report
 
 # See exactly what would be sent to Claude, without calling the API
 xctriage analyze xcbuild.log --source xcodebuild --llm --redact --dry-run-prompt
 
+# Send the raw, unredacted log (not recommended)
+xctriage analyze xcbuild.log --source xcodebuild --llm --no-redact
+
 # Standalone redaction, independent of --llm - pipe any file/log through it
 xctriage redact xcbuild.log --report
 ```
 
-### Privacy: redaction before the LLM boundary
+### Privacy: what leaves your machine with `--llm`
 
-`--redact` runs the log through a deterministic regex-based scrubber (`Redactor`, no LLM involved) before it reaches `ClaudeClassifier`: GitHub/Slack/Anthropic/OpenAI tokens, AWS access keys, private key blocks, JWTs, bearer tokens, credentials embedded in URLs, `KEY=value`-style secrets from CI environment dumps, `/Users/<name>` home paths, and email addresses (opt out per-run with `xctriage redact --keep-emails`). `--redaction-report` shows what was stripped without ever printing the actual secret. `--dry-run-prompt` prints the exact text that would leave the machine and exits before any network call, so you can check it before wiring `--llm` into CI at all.
+Without `--llm` or `--llm-always`, nothing is sent anywhere. The rule classifier, flaky tracker and terminal, JSON, SARIF and GitHub outputs are all local.
 
-This only ever touches the text sent to the failure-classification call. `xctriage remediate` sends real file contents to Claude to generate a patch - that path is intentionally left alone, because a patch has to apply against the byte-for-byte real source or sandbox validation rejects it.
+With `--llm` (or `--llm-always`) and `XCTRIAGE_ANTHROPIC_API_KEY` set, and only when the Claude call is actually made (`--llm` makes it only when rule confidence is below the threshold), one HTTPS request goes to `https://api.anthropic.com/v1/messages`. It contains:
+
+- Your API key, as the auth header.
+- A fixed system prompt.
+- The failure-context lines of the log, cut to 4,000 characters (the first 2,000 and the last 2,000 when longer). The rest of the log is not sent.
+
+Nothing else is sent: not the whole log, not your source files, not the flaky database. The Slack, JSON and other outputs are separate and only go where you point them.
+
+Redaction is on by default whenever the log goes to Claude. `--redact` is accepted for clarity, and `--no-redact` is the only way to send the raw text. The scrubber (`Redactor`, deterministic regexes, no LLM) removes GitHub/Slack/Anthropic/OpenAI tokens, AWS access keys, private key blocks, JWTs, bearer tokens, credentials embedded in URLs, `KEY=value`-style secrets from CI environment dumps, `/Users/<name>` home paths, and email addresses. It is pattern based, so a secret in an unusual format can get through. `--redaction-report` shows what was stripped (category and count) without printing the secret. `--dry-run-prompt` prints the exact text that would be sent and exits before any network call, so check it before you wire `--llm` into CI. (`xctriage redact --keep-emails` is the standalone command's option and does not change `analyze`.)
+
+`xctriage remediate` is different. It sends real file contents to Claude to generate a patch, and that path is not redacted, because a patch has to apply to the exact source or sandbox validation rejects it. Only run it on code you are willing to send to the API.
 
 ### CI gate mode with `--exit-code`
 
@@ -213,7 +226,7 @@ xcodebuild / xcresult bundle / CI log
 │  ┌──────────────────────────────────────────────┐       │
 │  │            RuleClassifier (struct)            │       │
 │  │  21 NSRegularExpression rules                 │       │
-│  │  8 categories · sub-millisecond · no network │       │
+│  │  8 categories + unknown · no network   │       │
 │  └───────────────────┬──────────────────────────┘       │
 │                      │ confidence < 0.60 AND --llm       │
 │                      ▼                                   │
@@ -280,7 +293,7 @@ Add `--llm` to fall back to Claude when rule confidence drops below 0.60:
 
 ```
 $ export XCTRIAGE_ANTHROPIC_API_KEY=sk-ant-...
-$ xctriage analyze xcbuild.log --source xcodebuild --llm
+$ xctriage analyze xcbuild.log --source xcodebuild --llm --redact
 ```
 
 </details>
@@ -301,7 +314,7 @@ A third workflow, `.github/workflows/claude-pr-review.yml`, is separate from bot
 Both pipelines classify test failures with Claude before deciding what to do about them, and both apply the same rule: **the LLM only picks the failure category, it never picks the action.**
 
 - A `flaky_test` verdict at 0.75+ confidence gets one automatic retry. If the retry passes, the build goes green and nobody gets paged for a flake.
-- A `compilation_error` verdict gets a policy-gated remediation attempt instead: `xctriage remediate` fingerprints the failure, re-checks it against `RemediationPolicy` (category allowlist, confidence floor, forbidden paths), asks Claude for exactly one single-file unified diff, and proves that diff by applying it inside an isolated `git worktree` and actually running `swift build` + `swift test` there. If policy or the sandbox rejects it - wrong shape, too many files, still doesn't build, still doesn't pass - the command exits non-zero and the pipeline falls through to the same Slack notification as any other unhandled category. Nothing here is ever applied to the working tree or opened as a PR; a passing proposal is archived as a build artifact for a human to read and apply by hand.
+- A `compilation_error` verdict gets a policy-gated remediation attempt instead: `xctriage remediate` fingerprints the failure, re-checks it against `RemediationPolicy` (category allowlist, confidence floor, forbidden paths), asks Claude for exactly one single-file unified diff, and proves that diff by applying it inside an isolated `git worktree` and actually running `swift build` + `swift test` there. If policy or the sandbox rejects it - wrong shape, too many files, still doesn't build, still doesn't pass - the command exits non-zero and the pipeline falls through to the same Slack notification as any other unhandled category. In these two pipelines nothing is applied to the working tree or opened as a PR: the CI jobs have a read-only token, and a passing proposal is archived as a build artifact for a human to read and apply by hand. Run by hand, `xctriage remediate --create-pr` can open a draft PR; it never merges.
 - Every other category (dependency failure, OOM, timeout, infra failure) has no safe auto-fix, so the pipeline posts the LLM's suggested fix to Slack and leaves the build failed for a human.
 - The flaky retry only ever happens once, and the remediation attempt only ever proposes, never applies. There's no loop, no escalating retry count, and category eligibility is enforced by `RemediationPolicy` in code, not by pipeline logic trusting the model's word for it.
 

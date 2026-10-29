@@ -108,7 +108,7 @@ pipeline {
                             "${XCTRIAGE_BIN}" analyze "${BUILD_LOG}" \
                                 --source "${CI_SOURCE}" \
                                 --build-id "${BUILD_TAG}" \
-                                --llm \
+                                --llm --redact \
                                 --output slack
                         '''
                     }
@@ -173,7 +173,7 @@ pipeline {
                         "${XCTRIAGE_BIN}" analyze "${TEST_LOG}" \
                             --source "${CI_SOURCE}" \
                             --build-id "${BUILD_TAG}" \
-                            --llm \
+                            --llm --redact \
                             --output json > "${REMEDIATION_JSON}" || true
                     '''
                     def category = sh(
@@ -200,7 +200,7 @@ pipeline {
                                 "${XCTRIAGE_BIN}" analyze "${TEST_LOG}" \
                                     --source "${CI_SOURCE}" \
                                     --build-id "${BUILD_TAG}" \
-                                    --llm \
+                                    --llm --redact \
                                     --output slack
                             '''
                         }
@@ -234,7 +234,7 @@ pipeline {
                             "${XCTRIAGE_BIN}" analyze "${TEST_LOG}" \
                                 --source "${CI_SOURCE}" \
                                 --build-id "${BUILD_TAG}" \
-                                --llm \
+                                --llm --redact \
                                 --output slack
                         '''
                     } else {
@@ -243,7 +243,7 @@ pipeline {
                             "${XCTRIAGE_BIN}" analyze "${TEST_LOG}" \
                                 --source "${CI_SOURCE}" \
                                 --build-id "${BUILD_TAG}" \
-                                --llm \
+                                --llm --redact \
                                 --output slack
                         '''
                     }

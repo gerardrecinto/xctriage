@@ -1,20 +1,20 @@
 # Target design: Actions Runner Controller + Argo CD for xctriage
 
 **This is a target-architecture design-review document, not a description
-of what xctriage currently runs** — same framing as `PART_B`, sections
+of what xctriage currently runs**: same framing as `PART_B`, sections
 34-42, which this extends. Per **ADR-007** and
 [`WHAT_I_DID_NOT_BUILD.md`](WHAT_I_DID_NOT_BUILD.md#kubernetes-argo-cd-gitops-reconciliation),
 there is no Kubernetes cluster, no Argo CD instance, and no Actions Runner
 Controller install behind this repo today. Every manifest below is
 proposed and untested against a live control plane; nothing here has been
 `kubectl apply`'d anywhere. Written down because a Staff/Principal review
-of "what's next after CI" produces exactly this kind of design — the honest
+of "what's next after CI" produces exactly this kind of design: the honest
 place for it is a labeled sketch, not files that look like running infra.
 
 ## Why this exists as a separate doc from `WHAT_I_DID_NOT_BUILD.md`
 
 That doc records the decision not to build GitOps/K8s yet, and why. This
-doc is what "yet" would look like — the concrete shape, not just the
+doc is what "yet" would look like: the concrete shape, not just the
 rejection. It doesn't change the verdict: still not built, still needs a
 real target cluster first (see ADR-007's "When to revisit").
 
@@ -25,7 +25,7 @@ real target cluster first (see ADR-007's "When to revisit").
 ### What ARC actually is, and its hard ceiling
 
 ARC (`actions/actions-runner-controller`) is a Kubernetes controller that
-manages ephemeral GitHub Actions runner pods — an `AutoscalingRunnerSet`
+manages ephemeral GitHub Actions runner pods: an `AutoscalingRunnerSet`
 custom resource replaces `runs-on: ubuntu-latest` with a self-hosted
 runner-scale-set label backed by pods your cluster schedules and destroys
 per job.
@@ -39,16 +39,16 @@ container image and no macOS container runtime; Apple's software license
 restricts macOS virtualization to Apple hardware, which is exactly why
 GitHub's own `macos-*` runners are bare-metal Mac minis, not containers.
 **Moving the Swift build/test job onto ARC is not a configuration problem
-to solve — it's structurally impossible with this tool.** That job stays
+to solve: it's structurally impossible with this tool.** That job stays
 on GitHub-hosted (or self-hosted bare-metal Mac) runners regardless of
 anything below.
 
 What ARC *can* legitimately take over, because they're already
 Linux-only in `ci.yml` and `claude-pr-review.yml`: `dependency-review`,
-`trivy`, and the new Claude PR review job — plus, per Part 2 below, a
+`trivy`, and the new Claude PR review job: plus, per Part 2 below, a
 target `build-and-push-image` job for this repo's own `Dockerfile`.
 
-### Target manifest — scoped to what ARC can actually run
+### Target manifest: scoped to what ARC can actually run
 
 ```yaml
 # arc-runner-set.yaml (TARGET — not installed anywhere)
@@ -85,14 +85,14 @@ spec:
 ```
 
 No Docker-in-Docker sidecar here on purpose: `dependency-review` and
-`trivy` don't build images. The one job that would need it —
-`build-and-push-image` (Part 2) — mounts `/var/run/docker.sock` from a
+`trivy` don't build images. The one job that would need it:
+`build-and-push-image` (Part 2): mounts `/var/run/docker.sock` from a
 node-level Docker daemon instead of running DinD, which avoids DinD's
 usual privileged-container and layer-cache cold-start problems for a
 low-frequency (tag-push-only) job.
 
 Then in the workflow: `runs-on: xctriage-linux-runners` in place of
-`ubuntu-latest`, or — as already wired in `claude-pr-review.yml` — set the
+`ubuntu-latest`, or, as already wired in `claude-pr-review.yml`, set the
 `LINUX_RUNNER` repo Variable to the runner-scale-set label and every
 Linux-only job picks it up with no workflow-file edit.
 
@@ -102,7 +102,7 @@ Self-hosted runners only pay for themselves at a request volume GitHub-hosted
 minutes get expensive at, or when a job needs something GitHub-hosted
 runners can't give it (a private network peer, a specific CPU
 architecture, a persistent cache volume). For three lightweight Linux
-jobs on a single-CLI-tool repo, that threshold isn't close to met today —
+jobs on a single-CLI-tool repo, that threshold isn't close to met today:
 this section exists as the honest answer to "how would you scale this,"
 not a recommendation to provision it now.
 
@@ -113,14 +113,14 @@ not a recommendation to provision it now.
 ### What there actually is to deploy
 
 xctriage is a CLI binary (`GitHub Releases`, see `release.yml`), not a
-long-running service — there is no pod for Argo CD to keep in sync in the
+long-running service: there is no pod for Argo CD to keep in sync in the
 way it would for a web app. The one deployable shape that's honest for a
 CLI tool is a **scheduled Kubernetes `CronJob`** running the `Dockerfile`
 image from this repo, invoking a command the CLI already has and is
 already tested (`xctriage flaky`), against a `PersistentVolumeClaim`
 holding the same SQLite flaky-test database `FlakyTestTracker` already
 writes locally. It's the existing `flaky` subcommand and the existing
-`SlackReporter`, invoked on a schedule instead of from CI — not a new
+`SlackReporter`, invoked on a schedule instead of from CI: not a new
 service invented to give Argo CD something to sync.
 
 ### Target CD flow
@@ -198,8 +198,8 @@ spec:
 
 ### What would justify actually building this
 
-Same test as the parent doc: an actual target cluster to deploy to — even
-a single local/dev one — per PART_B section 111's recommended MVP
+Same test as the parent doc: an actual target cluster to deploy to: even
+a single local/dev one: per PART_B section 111's recommended MVP
 vertical slice. Until then this stays a sketch, and `ADR-007`'s verdict
 ("not built") stands.
 
@@ -208,7 +208,7 @@ vertical slice. Until then this stays a sketch, and `ADR-007`'s verdict
 ## Verification commands (what these can honestly be checked against today)
 
 `AutoscalingRunnerSet` and Argo CD's `Application` are both CRDs, not
-built-in Kubernetes types — a plain `kubectl apply --dry-run=client`
+built-in Kubernetes types: a plain `kubectl apply --dry-run=client`
 against a stock cluster fails with `no matches for kind`, not because the
 YAML is wrong, but because the CRDs aren't installed. What's actually
 checkable without a cluster:

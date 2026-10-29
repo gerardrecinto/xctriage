@@ -37,4 +37,23 @@ final class LLMFallbackPolicyTests: XCTestCase {
         )
         XCTAssertFalse(result)
     }
+
+    private let secretEntries = [
+        LogEntry(lineNumber: 1, level: .error,
+                 message: "XCTRIAGE_ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz failed in /Users/jane/app",
+                 raw: "")
+    ]
+
+    func test_promptPayload_redactsWhenRedactIsTrue() {
+        let payload = LLMFallbackPolicy.promptPayload(entries: secretEntries, redact: true)
+        XCTAssertFalse(payload.text.contains("sk-ant-"))
+        XCTAssertFalse(payload.text.contains("/Users/jane"))
+        XCTAssertNotNil(payload.redaction)
+    }
+
+    func test_promptPayload_sendsRawOnlyWhenRedactIsFalse() {
+        let payload = LLMFallbackPolicy.promptPayload(entries: secretEntries, redact: false)
+        XCTAssertTrue(payload.text.contains("sk-ant-api03-abcdefghijklmnopqrstuvwxyz"))
+        XCTAssertNil(payload.redaction)
+    }
 }

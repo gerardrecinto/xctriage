@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 # Repository/organization Variables (Settings > Secrets and variables >
 # Actions > Variables) override the `vars.X || default` fallbacks below
@@ -30,8 +29,8 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
 
   trivy:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
@@ -39,10 +38,10 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Trivy filesystem scan (deps + misconfig)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -53,23 +52,18 @@ jobs:
           severity: ${{ vars.TRIVY_SEVERITY || 'CRITICAL,HIGH' }}
 
       - name: Upload Trivy results to Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
         if: always()
         with:
           sarif_file: ${{ env.TRIVY_RESULTS_SARIF }}
 
   test:
     runs-on: ${{ vars.MACOS_RUNNER || 'macos-15' }}
-    # Job-level override (top-level default is contents: read) so the
-    # Auto-Remediate PR step can push a remediation branch and open a draft
-    # PR via `gh`. On a fork's pull_request run GITHUB_TOKEN stays read-only
-    # regardless of what's declared here (GitHub security default) - that
-    # step's continue-on-error already tolerates that failure the same way
-    # it tolerates a policy rejection.
+    # Read-only on purpose: this job sends logs to the LLM, so its token
+    # cannot push or open PRs. A passing remediation proposal is uploaded as
+    # an artifact for a human to apply.
     permissions:
-      contents: write
-      packages: write
-      pull-requests: write
+      contents: read
     strategy:
       matrix:
         xcode: ${{ fromJSON(vars.XCODE_VERSIONS || '["16.3"]') }}
@@ -85,7 +79,7 @@ jobs:
       XCTRIAGE_SLACK_WEBHOOK: ${{ secrets.XCTRIAGE_SLACK_WEBHOOK }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Select Xcode
         run: sudo xcode-select --switch /Applications/Xcode_${{ matrix.xcode }}.app
@@ -111,7 +105,7 @@ jobs:
           "$XCTRIAGE_BIN" analyze "$BUILD_LOG" \
             --source "$CI_SOURCE" \
             --build-id "${{ github.run_id }}" \
-            --llm \
+            --llm --redact \
             --output slack || true
 
       - name: Test
@@ -126,7 +120,7 @@ jobs:
           "$XCTRIAGE_BIN" analyze "$TEST_LOG" \
             --source "$CI_SOURCE" \
             --build-id "${{ github.run_id }}" \
-            --llm \
+            --llm --redact \
             --output json > "$REMEDIATION_JSON" || true
           category=$(python3 -c "import json,os; print(json.load(open(os.environ['REMEDIATION_JSON']))['classification']['category'])" 2>/dev/null || echo unknown)
           confidence=$(python3 -c "import json,os; print(json.load(open(os.environ['REMEDIATION_JSON']))['classification']['confidence'])" 2>/dev/null || echo 0)
@@ -146,44 +140,28 @@ jobs:
       # `xctriage remediate` fingerprints the failure, re-runs it through the
       # same policy gate, asks Claude for a single-file diff, and proves it
       # by building and testing inside an isolated git worktree before this
-      # step ever sees output. When it also passes sandbox validation this
-      # opens a draft PR (GitHubPRWriter, never auto-merged - a human still
-      # has to approve it). --create-pr is left off entirely on a fork's
-      # pull_request run, where GITHUB_TOKEN can't push to this repo anyway;
-      # skipping it there avoids a guaranteed-to-fail push instead of just
-      # tolerating it. continue-on-error because a non-zero exit here means
+      # step ever sees output. The diff is uploaded as an artifact; this job
+      # has a read-only token, so it never pushes or opens a PR. continue-on-error because a non-zero exit here means
       # policy or the sandbox rejected the proposal (wrong category, too
       # many files touched, forbidden path, build/test still red) - that's
       # the gate working, not a workflow failure, so the job still falls
       # through to the Slack notification either way.
-      - name: "Auto-Remediate: propose sandboxed patch, open draft PR (compilation_error)"
+      - name: "Auto-Remediate: propose sandboxed patch (compilation_error)"
         id: propose_patch
         if: >
           steps.test.outcome == 'failure' &&
           steps.retry.outcome != 'success' &&
           steps.classify.outputs.category == 'compilation_error'
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          CREATE_PR_FLAG=""
-          if [ "${{ github.event_name }}" != "pull_request" ] || \
-             [ "${{ github.event.pull_request.head.repo.full_name }}" == "${{ github.repository }}" ]; then
-            CREATE_PR_FLAG="--create-pr"
-          fi
-
           "$XCTRIAGE_BIN" remediate "$TEST_LOG" \
             --source "$CI_SOURCE" \
             --repo-root . \
-            --out "$REMEDIATION_DIFF" \
-            $CREATE_PR_FLAG
+            --out "$REMEDIATION_DIFF"
 
       - name: Upload remediation proposal
         if: steps.propose_patch.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: remediation-proposal-${{ matrix.xcode }}
           path: ${{ env.REMEDIATION_DIFF }}
@@ -194,8 +172,23 @@ jobs:
           "$XCTRIAGE_BIN" analyze "$TEST_LOG" \
             --source "$CI_SOURCE" \
             --build-id "${{ github.run_id }}" \
-            --llm \
+            --llm --redact \
             --output slack || true
+
+      - name: "Auto-Remediate: summary"
+        if: always()
+        run: |
+          {
+            echo "### Auto-Remediate"
+            if [ "${{ steps.test.outcome }}" != "failure" ]; then
+              echo "Not needed: tests did not fail (test step: ${{ steps.test.outcome }})."
+            elif [ -z "$XCTRIAGE_ANTHROPIC_API_KEY" ]; then
+              echo "Skipped: XCTRIAGE_ANTHROPIC_API_KEY is not available (secret not set, or a fork PR). Classification used rules only; no flaky retry or patch proposal was attempted."
+            else
+              echo "Category: ${{ steps.classify.outputs.category }}, confidence ${{ steps.classify.outputs.confidence }}, flaky retry threshold $FLAKY_CONFIDENCE_THRESHOLD."
+              echo "Flaky retry: ${{ steps.retry.outcome }}. Patch proposal: ${{ steps.propose_patch.outcome }}."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail job if the test failure was not auto-remediated
         if: steps.test.outcome == 'failure' && steps.retry.outcome != 'success'
@@ -217,7 +210,7 @@ jobs:
 
       - name: Upload triage reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: triage-reports-${{ matrix.xcode }}
           path: |
