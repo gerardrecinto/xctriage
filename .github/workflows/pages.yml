@@ -27,7 +27,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site/logs
-          cp site/index.html _site/
+          cp site/index.html site/og.png _site/
           cp Tests/XCTriageKitTests/Fixtures/xcodebuild_compile_failure.log _site/logs/compile.log
           cp Tests/XCTriageKitTests/Fixtures/xcodebuild_test_failure.log _site/logs/test.log
           python3 - <<'PY'
