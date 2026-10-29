@@ -5,9 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>xctriage: from xcodebuild failed to root cause</title>
 <meta name="description" content="Paste an xcodebuild log and see which of the Swift tool’s rules match, which one wins, and the suggested fix. The rule table is read from the source.">
-<meta property="og:title" content="xctriage">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0ea5e9">
+<link rel="canonical" href="https://gerardrecinto.github.io/xctriage/">
+<meta property="og:title" content="xctriage: from xcodebuild failed to root cause">
+<meta property="og:url" content="https://gerardrecinto.github.io/xctriage/">
+<meta property="og:image" content="https://gerardrecinto.github.io/xctriage/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="xctriage: name the xcodebuild failure before you scroll the log">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="xctriage: from xcodebuild failed to root cause">
+<meta name="twitter:description" content="Paste an xcodebuild log and see which of the Swift tool’s rules match, which one wins, and the suggested fix.">
+<meta name="twitter:image" content="https://gerardrecinto.github.io/xctriage/og.png">
 <meta property="og:description" content="Paste an xcodebuild log and see which of the Swift tool’s rules match, which one wins, and the suggested fix. The rule table is read from the source.">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="xctriage">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230ea5e9'/%3E%3Ccircle cx='16' cy='16' r='6' fill='none' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E">
 <style>
 
@@ -15,7 +28,7 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#070d1a;--panel:#0d1526;--panel2:#111c33;--line:#1e2b47;--fg:#e8eefc;--mute:#9fb0cc;--brand:#38bdf8;--brand-bg:#082f49;--ok:#34d399;--ok-bg:#06382b;--err:#fca5a5;--err-bg:#3b1212}}
 :root[data-theme=dark]{--bg:#070d1a;--panel:#0d1526;--panel2:#111c33;--line:#1e2b47;--fg:#e8eefc;--mute:#9fb0cc;--brand:#38bdf8;--brand-bg:#082f49;--ok:#34d399;--ok-bg:#06382b;--err:#fca5a5;--err-bg:#3b1212}
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:var(--brand)}
 code,pre,textarea,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
@@ -47,7 +60,7 @@ h2{font-size:clamp(26px,4vw,36px);margin:0 0 8px;letter-spacing:-.01em}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-width:0}
 .card h3{margin:0;padding:12px 16px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .tools{display:flex;gap:6px;flex-wrap:wrap}
-.chip{font:600 12px system-ui;padding:5px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer;text-transform:none;letter-spacing:0}
+.chip{font:600 12px system-ui;padding:8px 12px;min-height:32px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer;text-transform:none;letter-spacing:0}
 .chip[aria-pressed=true]{background:var(--brand-bg);border-color:var(--brand);color:var(--brand)}
 #log{display:block;width:100%;height:420px;border:0;padding:12px 14px;font-size:12.5px;line-height:1.55;background:var(--code);color:var(--code-fg);resize:vertical;white-space:pre;overflow:auto}
 .src{display:flex;gap:8px;align-items:center;padding:10px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--mute);flex-wrap:wrap}
@@ -80,7 +93,9 @@ th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vert
 th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);background:var(--panel2)}
 tr:last-child td{border-bottom:0}
 td:first-child{font-family:ui-monospace,monospace;font-weight:700;white-space:nowrap}
-.install pre{background:var(--code);color:var(--code-fg);padding:16px;border-radius:12px;overflow-x:auto;font-size:13.5px;margin:0 0 12px}
+.pl{font-size:13px;color:var(--mute);margin:6px 0 10px}.pl b{font-weight:600}
+.rl{margin-top:16px}.rl summary{cursor:pointer;color:var(--brand);font-weight:600;padding:6px 0}.hero .cta a:not(.btn){align-self:center;font-weight:600}
+.install pre{background:var(--code);color:var(--code-fg);padding:16px 84px 16px 16px;border-radius:12px;overflow-x:auto;font-size:13.5px;margin:0 0 12px}
 .cols2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 @media (max-width:860px){.cols2{grid-template-columns:minmax(0,1fr)}}
 .limits{background:var(--panel);border:1px solid var(--line);border-left:4px solid #f59e0b;border-radius:10px;padding:16px 20px}
@@ -105,75 +120,87 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .ev i{color:var(--mute);font-style:normal;margin-right:8px}
 .sim{display:inline-block;font:700 11px ui-monospace,monospace;color:var(--brand);background:var(--brand-bg);padding:2px 8px;border-radius:6px;margin-left:8px;letter-spacing:0;text-transform:none}
 td.p{font:12px ui-monospace,monospace;overflow-wrap:anywhere;min-width:220px}
+.skip{position:absolute;left:8px;top:-60px;z-index:9;background:var(--panel);color:var(--fg);padding:8px 14px;border-radius:8px;border:1px solid var(--line)}
+.skip:focus{top:8px}
+.copy{position:absolute;top:8px;right:8px;font:600 12px system-ui;padding:6px 12px;min-height:32px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:var(--code-fg);cursor:pointer}
+.copy:hover{background:#334155}
+.cb{position:relative;margin:0 0 12px}.cb pre{margin:0}
+.qs{margin:0 0 8px;color:var(--mute);font-size:14px}
+.tw:focus-visible{outline:2px solid #0ea5e9;outline-offset:2px}
+.btn,.chip,.copy,.step{transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .18s ease}
+.btn:hover,.step:hover{transform:translateY(-2px)}
+.btn:active{transform:none}
+@media (prefers-reduced-motion:no-preference){
+.js .rv{opacity:0;transform:translateY(18px);transition:opacity .55s ease-out,transform .55s ease-out;transition-delay:var(--d,0s)}
+.js .rv.vis{opacity:1;transform:none}
+@supports (animation-timeline:scroll()){
+.hero .wrap{animation:hf linear both;animation-timeline:scroll(root block);animation-range:0 420px}
+@keyframes hf{to{opacity:.35;transform:translateY(-14px) scale(.98)}}}
+}
+@media (prefers-reduced-motion:reduce){.btn,.chip,.copy,.step{transition:none}.btn:hover,.step:hover{transform:none}}
 </style>
 </head>
 <body>
+<a class="skip" href="#try">Skip to the demo</a>
 <nav><div class="wrap">
   <a class="logo" href="#top"><i></i>xctriage</a>
-  <div class="links"><a href="#try" class="hide-s">Try it</a><a href="#rules" class="hide-s">Rules</a><a href="#install" class="hide-s">Install</a><a class="btn" href="https://github.com/gerardrecinto/xctriage">GitHub</a></div>
+  <div class="links"><a href="#try" class="hide-s">Demo</a><a href="#install" class="hide-s">Install</a><a class="btn" href="https://github.com/gerardrecinto/xctriage">GitHub</a></div>
 </div></nav>
 
 <header class="hero" id="top"><div class="wrap">
   <h1>Name the <em>xcodebuild</em> failure before you scroll the log.</h1>
-  <p class="lede">A Swift 6 command-line tool that classifies Apple-platform CI failures with weighted rules, reads xcresult bundles, tracks flaky tests, and asks Claude only when the rules are unsure.</p>
-  <div class="cta"><a class="btn primary" href="#try">Triage a log</a><a class="btn" href="#rules">See the rules</a></div>
-  <div class="stats"><div><b id="n-rules">21</b>classification rules</div><div><b>8</b>failure categories</div><div><b>0</b>uploads from this page</div></div>
+  <p class="lede">xctriage reads a failed Xcode build log and tells you the likely cause and a fix to try.</p>
+  <div class="cta"><a class="btn primary" href="#try">Try it on a log</a><a href="https://github.com/gerardrecinto/xctriage">View source</a></div>
 </div></header>
 
-
-<section id="try"><div class="wrap">
-  <h2>Triage an xcodebuild failure</h2>
-  <p class="sub">The rule table below is read from the Swift source at deploy time. This page runs those same patterns with your browser’s regex engine and picks the winner the way the Swift classifier does: the matching rule with the highest weight. The Swift tool uses NSRegularExpression, so unusual patterns could differ. Nothing you paste leaves the tab.</p>
+<section id="try"><div class="wrap rv">
+  <h2>Paste a failed build log</h2>
+  <p class="sub">A sample is loaded. Edit it or pick another. It runs in your browser and nothing is uploaded.</p>
   <div class="lab">
     <div class="card"><h3><span>build.log</span><span class="tools" id="smp" role="group" aria-label="Sample logs"><button class="chip" data-s="compile" aria-pressed="true">Compile failure</button><button class="chip" data-s="test" aria-pressed="false">Test failure</button><button class="chip" data-s="oom" aria-pressed="false">Out of memory</button><button class="chip" data-s="sim" aria-pressed="false">Simulator</button></span></h3>
       <label class="sr" for="log">Build log</label><textarea class="in" id="log" spellcheck="false" wrap="off"></textarea></div>
-    <div class="card" id="rep" aria-live="polite"><h3><span>Triage <span class="sim">SAME RULES, JS REGEX</span></span></h3><div class="status" id="boot">Loading the rules...</div></div>
+    <div class="card" id="rep" aria-live="polite"><h3><span>Triage <span class="sim">RULES + LINE FILTER PORTED TO JS</span></span></h3><div class="status" id="boot">Loading the rules...</div></div>
   </div>
+  <details class="rl"><summary id="rn">Rules</summary>
+    <p class="pl">Each rule is a pattern for one kind of failure, and the strongest match names the cause.</p>
+    <div class="tw" style="max-height:420px;overflow:auto" tabindex="0" role="region" aria-label="Classifier rule table"><table><thead><tr><th>Category</th><th>Weight</th><th>Pattern</th><th>Summary</th></tr></thead><tbody id="rt"></tbody></table></div>
+  </details>
 </div></section>
 
-<section><div class="wrap">
-  <h2>How it works</h2>
-  <p class="sub">Rules first, because most CI failures repeat. A model is the fallback, not the default.</p>
-  <div class="steps">
-    <div class="step"><div class="n">1</div><h3>Parse</h3><p>Console output from xcodebuild, or a <code>.xcresult</code> bundle read through <code>xcresulttool</code>, becomes log entries with file, line and column.</p></div>
-    <div class="step"><div class="n">2</div><h3>Classify</h3><p>Weighted regex rules vote. The strongest match sets the category, the root cause and the suggested fix. Below 60% confidence, <code>--llm</code> asks Claude.</p></div>
-    <div class="step"><div class="n">3</div><h3>Track and report</h3><p>An actor-based SQLite tracker scores flaky tests over 90 days. Output goes to the terminal, JSON, SARIF, Slack or a GitHub pull request.</p></div>
-  </div>
-</div></section>
-
-<section id="rules"><div class="wrap">
-  <h2>The rule table</h2>
-  <p class="sub" id="rn">Loading...</p>
-  <div class="tw" style="max-height:520px;overflow:auto"><table><thead><tr><th>Category</th><th>Weight</th><th>Pattern</th><th>Summary</th></tr></thead><tbody id="rt"></tbody></table></div>
-</div></section>
-
-<section id="install" class="install"><div class="wrap">
-  <h2>Run it</h2>
-  <p class="sub">Swift 6 on macOS 14 or later.</p>
+<section id="install" class="install"><div class="wrap rv">
+  <h2>Run the real tool</h2>
+  <p class="sub">Needs macOS 14 or later with Swift 6. The first block runs it on a sample log from the repo.</p>
   <div class="cols2">
     <div>
-<pre>swift build -c release
-.build/release/xctriage analyze xcbuild.log \
-  --source xcodebuild --build-id ios-5512</pre>
+      <p class="qs">Build from source and triage the sample compile failure</p>
+      <div class="cb"><pre id="c1">git clone https://github.com/gerardrecinto/xctriage.git
+cd xctriage
+swift build -c release
+.build/release/xctriage analyze \
+  Tests/XCTriageKitTests/Fixtures/xcodebuild_compile_failure.log \
+  --source xcodebuild</pre><button class="copy" data-c="c1" type="button">Copy</button></div>
     </div>
     <div>
-<pre>export XCTRIAGE_ANTHROPIC_API_KEY=...
-xctriage analyze xcbuild.log --source xcodebuild --llm
-
-swift test</pre>
-      <p class="note">The LLM fallback needs your own API key. This page never calls it.</p>
+      <p class="qs">Or use the release binary (arm64 macOS) on your own log</p>
+      <div class="cb"><pre id="c2">curl -L https://github.com/gerardrecinto/xctriage/releases/latest/download/xctriage-macos.zip -o xctriage.zip
+unzip xctriage.zip
+./xctriage analyze xcbuild.log --source xcodebuild</pre><button class="copy" data-c="c2" type="button">Copy</button></div>
+      <p class="note">Add <code>--llm</code> for the Claude fallback. It needs your own <code>XCTRIAGE_ANTHROPIC_API_KEY</code>; this page never calls it. <code>swift test</code> runs the suite.</p>
     </div>
   </div>
 </div></section>
 
-<section><div class="wrap">
-  <div class="limits"><strong>What this does not do</strong><ul>
-    <li>The Swift tool cannot run in a browser. This page re-runs its rule table, not the parser, the xcresult reader, the tracker or the LLM path.</li>
-    <li>Confidence is the winning rule's weight, not a calibrated probability.</li>
-    <li>A log no rule matches comes back as unknown with 0% confidence, which is when the optional LLM fallback applies.</li>
-  </ul></div>
+<section><div class="wrap rv">
+  <div class="limits"><strong>What this page is not</strong>
+    <p class="pl"><b>Rules and confidence. </b> The score is how strong the best matching rule is, not a chance of being right.</p>
+    <ul>
+    <li>The demo applies the tool's rule table and a port of its line filter in JavaScript. The Swift tool itself does not run here.</li>
+    <li>Confidence is the winning rule's weight, not a probability. A log no rule matches comes back as unknown at 0%, which is when the optional <code>--llm</code> fallback applies.</li>
+    </ul>
+    <p class="pl"><b>Flaky tracking. </b> The tool remembers which tests fail on and off, so you can spot the unreliable ones.</p>
+    <p class="pl"><b>Xcode result files (xcresult). </b> Xcode can save a test run as one bundle, and the tool can read it. Both need the real tool on a Mac, so neither runs on this page.</p>
+  </div>
 </div></section>
-
 
 <footer><div class="wrap">
   <span>xctriage. Built by <a href="https://github.com/gerardrecinto">Gerard Recinto</a>.</span>
@@ -182,6 +209,17 @@ swift test</pre>
 
 <script>
 (() => {
+  const mo = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (mo && "IntersectionObserver" in window) {
+    document.documentElement.classList.add("js");
+    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("vis"); io.unobserve(e.target); } }), { rootMargin: "0px 0px -8% 0px" });
+    document.querySelectorAll(".rv").forEach((el) => io.observe(el));
+  }
+  document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => {
+    const el = document.getElementById(b.dataset.c), t = el.textContent;
+    const done = (m) => { b.textContent = m; setTimeout(() => { b.textContent = "Copy"; }, 1600); };
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => done("Copied"), () => { const r = document.createRange(); r.selectNodeContents(el); const g = getSelection(); g.removeAllRanges(); g.addRange(r); done("Press Cmd+C"); });
+  }));
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -190,15 +228,29 @@ swift test</pre>
   let rules = [], timer = null;
   const SAMPLES = {};
 
+  // Mirrors BuildLogParser.detectLevel + extractFailureContext: the Swift tool
+  // classifies only the error/warning lines before the first failure marker,
+  // not the whole log.
+  const L = { sw: /^(.+\.(?:swift|m|mm|c|cpp|h)):(\d+):(\d+):\s+(error|warning|note):\s+(.+)$/, br: /\*\* (BUILD|TEST) (SUCCEEDED|FAILED) \*\*/, ld: /^ld: (.+)/, ge: /^error:\s+(.+)/i, pe: /(permission denied|access denied|operation not permitted|ScriptSecurityException|RejectedAccessException|scripts not permitted|403 Forbidden|401 Unauthorized|EACCES|EPERM)/i, tf: /Test Case '(.+?)' failed \(([0-9.]+) seconds\)/, fe: /^(.+\.swift):(\d+): (?:Fatal error|Precondition failed|Assertion failed):\s*(.+)$/, cs: /(EXC_BAD_ACCESS|EXC_BREAKPOINT|EXC_CRASH|signal SIGABRT|signal SIGSEGV|signal SIGILL|libc\+\+abi|AddressSanitizer:|ThreadSanitizer:|UndefinedBehaviorSanitizer:)/i };
+  function level(raw) {
+    const m = L.sw.exec(raw); if (m) return m[4];
+    const b = L.br.exec(raw); if (b) return b[2] === "FAILED" ? "error" : "info";
+    return (L.ld.test(raw) || L.ge.test(raw) || L.pe.test(raw) || L.tf.test(raw) || L.fe.test(raw) || L.cs.test(raw)) ? "error" : null;
+  }
+  function context(text) {
+    const es = text.split("\n").map((raw) => ({ m: raw.replace(/^[ \t]+|[ \t]+$/g, ""), lv: level(raw) }));
+    const i = es.findIndex((e) => { const b = L.br.exec(e.m); return b ? b[2] === "FAILED" : L.pe.test(e.m); });
+    return (i < 0 ? es.filter((e) => e.lv === "error") : es.slice(0, i).filter((e) => e.lv === "error" || e.lv === "warning")).map((e) => e.m);
+  }
   function classify(text) {
     const matched = []; let best = null;
     rules.forEach((r) => { if (r.re && r.re.test(text)) { matched.push(r); if (!best || r.weight > best.weight) best = r; } });
     return { best, matched };
   }
   function run() {
-    if (!rules.length) return; const text = $("log").value, { best, matched } = classify(text), lines = text.split("\n").filter((l) => l.trim()).length;
-    const head = '<h3><span>Triage <span class="sim">SAME RULES, JS REGEX</span></span></h3>';
-    if (!best) { $("rep").innerHTML = head + `<div class="vd unknown"><b>unknown</b><span>${lines ? "Scanned " + lines + " log line(s); no known failure signature matched" : "No log content to analyze"}</span></div><div class="sec"><h4>Confidence</h4><span class="bar"><i style="width:0"></i></span><b>0%</b><div class="note">This is the case the optional <code>--llm</code> fallback is for.</div></div>`; return; }
+    if (!rules.length) return; const ctx = context($("log").value), { best, matched } = classify(ctx.join("\n")), lines = ctx.length;
+    const head = '<h3><span>Triage <span class="sim">RULES + LINE FILTER PORTED TO JS</span></span></h3>';
+    if (!best) { $("rep").innerHTML = head + `<div class="vd unknown"><b>unknown</b><span>${lines ? "Scanned " + lines + " log line(s); no known failure signature matched" : "No error lines found before the failure marker (0 lines parsed)"}</span></div><div class="sec"><h4>Confidence</h4><span class="bar"><i style="width:0"></i></span><b>0%</b><div class="note">This is the case the optional <code>--llm</code> fallback is for.</div></div>`; return; }
     $("rep").innerHTML = head + `<div class="vd"><b>${esc(best.category.replace(/([A-Z])/g, " $1"))}</b><span>${esc(best.summary)}</span></div>
       <div class="sec"><h4>Confidence</h4><span class="bar"><i style="width:${Math.round(best.weight * 100)}%"></i></span><b>${Math.round(best.weight * 100)}%</b></div>
       <div class="sec"><h4>Suggested fix</h4><div class="fix">${esc(best.fix)}</div></div>
@@ -209,9 +261,9 @@ swift test</pre>
   Promise.all([fetch("rules.json").then((r) => r.json()), fetch("logs/compile.log").then((r) => r.text()), fetch("logs/test.log").then((r) => r.text())]).then(([rs, c, t]) => {
     rules = rs.map((r) => ({ ...r, re: mk(r.pattern) }));
     SAMPLES.compile = c; SAMPLES.test = t;
-    SAMPLES.oom = "** BUILD FAILED **\nThe following build commands failed:\n\tSwiftCompile normal arm64 Sources/App/Renderer.swift\nzsh: killed     xcodebuild -scheme App build\nOut of memory: build agent killed by memory pressure (signal 9)\n";
-    SAMPLES.sim = "Testing started\nxcrun simctl boot 'iPhone 15' failed: Unable to boot device in current state: Shutdown\nSimulator boot timeout after 120 seconds\n";
-    $("n-rules").textContent = rules.length; $("rn").textContent = rules.length + " rules, read from RuleClassifier.swift at deploy time. The highest weight wins, and the first rule wins a tie.";
+    SAMPLES.oom = "Compiling Renderer.swift\nerror: Out of memory: build agent killed by memory pressure (signal 9)\n** BUILD FAILED **\n";
+    SAMPLES.sim = "Testing started\nerror: xcrun simctl boot 'iPhone 15' failed: Unable to boot device in current state: Shutdown\nerror: Simulator boot timeout after 120 seconds\n** TEST FAILED **\n";
+    $("rn").textContent = "See all " + rules.length + " rules (highest weight wins, first wins a tie)";
     $("rt").innerHTML = rules.map((r) => `<tr><td>${esc(r.category)}</td><td>${Math.round(r.weight * 100)}%</td><td class="p">${esc(r.pattern)}</td><td>${esc(r.summary)}</td></tr>`).join("");
     $("log").value = SAMPLES.compile; document.querySelector("[data-s=compile]").setAttribute("aria-pressed", "true"); window.__XT_READY__ = true; run();
   }).catch(() => { $("boot").textContent = "The rule table did not load. The README lists the categories."; });
