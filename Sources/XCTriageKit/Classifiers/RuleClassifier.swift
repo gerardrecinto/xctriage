@@ -91,7 +91,7 @@ internal let defaultRules: [ClassifierRule] = [
     ),
     // Resource exhaustion
     ClassifierRule(
-        pattern: #"(?i)(out of memory|OOMKilled|memory pressure|killed: 9|signal 9|Killed\b)"#,
+        pattern: #"(?i)(out of memory|OOMKilled|memory pressure|killed: 9|signal 9)"#,
         category: .resourceExhaustion, weight: 0.93,
         summaryTemplate: "OOM: build agent killed by memory pressure",
         fixTemplate: "Reduce -jobs count for xcodebuild. Add `OTHER_SWIFT_FLAGS = -Onone` for debug builds to lower peak compiler memory."
@@ -116,14 +116,40 @@ internal let defaultRules: [ClassifierRule] = [
         fixTemplate: "Run `sudo xcode-select --switch /Applications/Xcode.app`. Verify Xcode version matches the one used to generate the xcresult."
     ),
     ClassifierRule(
-        pattern: #"(?i)(simulator|boot|simctl).*(failed|error|timeout)"#,
+        pattern: #"(?i)(simulator|simctl|unable to boot).*(failed|error|timeout)"#,
         category: .infraFailure, weight: 0.83,
         summaryTemplate: "iOS Simulator boot or simctl failure",
         fixTemplate: "Run `xcrun simctl shutdown all && xcrun simctl erase all`. Ensure the requested device type exists with `xcrun simctl list`."
     ),
+    // Signing, destinations, DNS
+    ClassifierRule(
+        pattern: #"(?i)(No profiles for .+ were found|provisioning profile|No signing certificate|Code Signing Error|errSecInternalComponent)"#,
+        category: .infraFailure, weight: 0.90,
+        summaryTemplate: "Code signing or provisioning profile problem",
+        fixTemplate: "Check the signing certificate is in the agent keychain and unlocked, and that a profile for this bundle ID is installed or Automatic signing is allowed with -allowProvisioningUpdates."
+    ),
+    ClassifierRule(
+        pattern: #"(?i)(Unable to find a destination matching|SDK .+ cannot be located|Could not find a destination)"#,
+        category: .infraFailure, weight: 0.88,
+        summaryTemplate: "Requested simulator, device or SDK is not installed on the agent",
+        fixTemplate: "Run `xcodebuild -showdestinations` and `xcodebuild -showsdks` on the agent and use a destination or SDK that exists, or install the matching Xcode platform."
+    ),
+    ClassifierRule(
+        pattern: #"(?i)(Could not resolve host|Temporary failure in name resolution|Name or service not known|NSURLErrorDomain.*-1003)"#,
+        category: .infraFailure, weight: 0.90,
+        summaryTemplate: "DNS or network failure: host could not be resolved",
+        fixTemplate: "Check DNS and proxy settings on the agent and that the hostname is correct. This is usually the agent network, not the code."
+    ),
+    // Missing modules
+    ClassifierRule(
+        pattern: #"(?i)no such module '[^']+'"#,
+        category: .dependencyFailure, weight: 0.88,
+        summaryTemplate: "Swift module not found",
+        fixTemplate: "Add the package or framework to the target's dependencies, run `swift package resolve` or `pod install` before building, and check the module name and import."
+    ),
     // Dependencies
     ClassifierRule(
-        pattern: #"(?i)(swift package|spm|package.*resolved).*(failed|error|missing)"#,
+        pattern: #"(?i)(swift package|spm|package.*resolved).*(failed|error|missing)|could not resolve package dependencies"#,
         category: .dependencyFailure, weight: 0.87,
         summaryTemplate: "Swift Package Manager dependency resolution failed",
         fixTemplate: "Delete Package.resolved and re-run `swift package resolve`. Check network access to package registry from CI agent."

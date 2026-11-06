@@ -175,4 +175,45 @@ final class ClassifierTests: XCTestCase {
         XCTAssertEqual(result.category, .testFailure)
         XCTAssertEqual(result.summary, "XCTest case failed")
     }
+
+    // MARK: common Xcode failures
+
+    private func classify(_ lines: [String]) -> ClassificationResult {
+        let log = lines.joined(separator: "\n")
+        return classifier.classify(parser.extractFailureContext(parser.parse(log)))
+    }
+
+    func test_classify_missingProvisioningProfile() {
+        let r = classify(["error: No profiles for 'com.acme.app' were found: Xcode couldn't find any iOS App Development provisioning profiles", "** BUILD FAILED **"])
+        XCTAssertEqual(r.category, .infraFailure)
+        XCTAssertTrue(r.summary.lowercased().contains("signing"))
+    }
+
+    func test_classify_noSuchModule() {
+        let r = classify(["/Users/r/A.swift:12:8: error: no such module 'Alamofire'", "** BUILD FAILED **"])
+        XCTAssertEqual(r.category, .dependencyFailure)
+    }
+
+    func test_classify_spmCouldNotResolvePackageDependencies() {
+        let r = classify(["error: Could not resolve package dependencies:", "** BUILD FAILED **"])
+        XCTAssertEqual(r.category, .dependencyFailure)
+    }
+
+    func test_classify_destinationNotFound() {
+        let r = classify(["error: Unable to find a destination matching the provided destination specifier", "** BUILD FAILED **"])
+        XCTAssertEqual(r.category, .infraFailure)
+    }
+
+    func test_classify_dnsFailure() {
+        let r = classify(["error: curl: (6) Could not resolve host: github.com", "** BUILD FAILED **"])
+        XCTAssertEqual(r.category, .infraFailure)
+        XCTAssertTrue(r.summary.contains("DNS"))
+    }
+
+    func test_ordinaryWordsDoNotTriggerOOMOrSimulatorRules() {
+        let killed = classify(["error: Killed the old process before starting", "** BUILD FAILED **"])
+        XCTAssertNotEqual(killed.category, .resourceExhaustion)
+        let boot = classify(["error: bootstrap script finished with status 2", "** BUILD FAILED **"])
+        XCTAssertNotEqual(boot.summary, "iOS Simulator boot or simctl failure")
+    }
 }
