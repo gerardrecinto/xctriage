@@ -29,7 +29,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
 
   trivy:
@@ -38,7 +38,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Trivy filesystem scan (deps + misconfig)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -79,7 +79,7 @@ jobs:
       XCTRIAGE_SLACK_WEBHOOK: ${{ secrets.XCTRIAGE_SLACK_WEBHOOK }}
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Select Xcode
         run: sudo xcode-select --switch /Applications/Xcode_${{ matrix.xcode }}.app
