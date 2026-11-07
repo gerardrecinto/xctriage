@@ -1,4 +1,6 @@
 # Target Architecture - Part B (Sections 34-114)
+
+*Caveat: this document describes a target design, not shipped code. See [WHAT_I_DID_NOT_BUILD.md](WHAT_I_DID_NOT_BUILD.md) for what exists today.*
 ## Continuous deployment, system-design depth, observability, and documentation strategy for xctriage at platform scale.
 
 This is a target-architecture design-review document, not a description of what xctriage currently runs. The real repo is a Swift 6 CLI: `BuildLogParser`/`XCResultParser` for input, a 19-rule `RuleClassifier` across 8 categories, a `ClaudeClassifier` fallback below 0.60 confidence, `FailureFingerprint` (SHA256, 16 hex chars), a two-gate `RemediationPolicy`, a `PatchGenerator` that proposes a single-file diff and never applies it, a `SandboxValidator` that builds and tests that diff inside an ephemeral `git worktree`, and a `remediate` CLI subcommand wiring all of it together. 212 tests pass (MEASURED). There is no event bus, no Kubernetes, no GitOps controller, no multi-region deployment, no Grafana instance, and no chaos-engineering rig actually running today. Every number below is tagged **(MEASURED)** when it comes from the real repo or **(TARGET)** when it's a proposed design goal with no production evidence behind it yet. This continues from Part A (sections 1-33, the agentic pipeline / MCP / agent-architecture half of the same design review) in this directory.
@@ -491,8 +493,8 @@ ADR-008-single-file-narrow-autonomy-scope.md
 ```
 
 ADR-007 is the one that matters most for reading the rest of this document set correctly: it's
-the explicit statement that GitOps/Kubernetes/Terraform/Kafka/multi-region — everything section
-34 onward in this file describes — is target design, not running infrastructure, and states why
+the explicit statement that GitOps/Kubernetes/Terraform/Kafka/multi-region: everything section
+34 onward in this file describes: is target design, not running infrastructure, and states why
 this repo deliberately contains no stub/fake clients pretending otherwise.
 
 ## 70. Repository Documentation Should Work at Three Levels

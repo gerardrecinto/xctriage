@@ -1,5 +1,7 @@
 # xctriage Target Architecture: Part C: Privacy, Security, Swift Depth, Reliability (Sections 115-210)
 
+*Caveat: this document describes a target design, not shipped code. See [WHAT_I_DID_NOT_BUILD.md](WHAT_I_DID_NOT_BUILD.md) for what exists today.*
+
 This is a target/proposed-architecture design-review document, not a claim
 that this infrastructure exists. It continues the section numbering from
 Parts A and B in this directory (sections 1-114, covering the base

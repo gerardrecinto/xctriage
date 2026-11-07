@@ -13,8 +13,8 @@ follow it.
 
 `RemediationPolicy` (`Sources/XCTriageKit/Policy/RemediationPolicy.swift`) is
 a plain Swift struct with no LLM call in it. It runs twice: once before
-patch generation (`isEligibleForRemediation` — category allowlist, minimum
-confidence, attempt count) and once after (`isPatchAllowed` — file count,
+patch generation (`isEligibleForRemediation`: category allowlist, minimum
+confidence, attempt count) and once after (`isPatchAllowed`: file count,
 forbidden path prefixes including its own source file and `.github/`,
 matched case-insensitively). Both return a `Decision` enum the CLI checks
 with a plain `guard`.
@@ -25,7 +25,7 @@ in the same line of work as the policy hardening above), runs immediately
 after `isPatchAllowed` and closes a gap `isPatchAllowed` alone can't:
 `isPatchAllowed` validates `proposal.filePath`, a string the LLM echoes
 back in its JSON response, but `git apply` acts on whatever the diff's own
-`+++ b/...` header actually says — nothing previously checked those two
+`+++ b/...` header actually says: nothing previously checked those two
 agree, or that the diff doesn't smuggle in hunks for additional files
 beyond the one claimed. Same principle as the rest of this ADR (a plain
 Swift function, unit tested, no LLM call), applied to a different point
@@ -45,7 +45,7 @@ in the pipeline where the LLM's own output could disagree with itself.
 ## Why chosen
 
 A `guard case .allowed = eligibility else { ... }` either compiles and
-passes its unit tests or it doesn't — there's no ambiguity about whether
+passes its unit tests or it doesn't: there's no ambiguity about whether
 the policy actually ran. `RemediationPolicyTests` exercises every branch
 (category not allowed, confidence too low, attempt limit exceeded, forbidden
 path, too many files changed) as ordinary assertions, not prompt evals.
@@ -59,7 +59,7 @@ path, too many files changed) as ordinary assertions, not prompt evals.
   computed upstream (category, confidence, file paths, attempt count). If a
   future rule genuinely needs semantic judgment ("does this diff change
   business logic or just formatting?"), that judgment still has to resolve
-  to a concrete signal the deterministic gate can check — the gate itself
+  to a concrete signal the deterministic gate can check: the gate itself
   stays LLM-free.
 
 ## When to revisit
@@ -68,4 +68,4 @@ If policy rules grow past what a flat struct comfortably expresses (e.g.
 per-repository policy config, org-level overrides), move to a small
 declarative policy format (OPA/Rego-style, per `docs/architecture/PART_B`
 section 99) rather than letting the Swift struct grow a rule interpreter of
-its own. Not needed yet — there are five rules, not fifty.
+its own. Not needed yet: there are five rules, not fifty.

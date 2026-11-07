@@ -1,5 +1,7 @@
 # Target Agentic Architecture (Sections 1-33)
 
+*Caveat: this document describes a target design, not shipped code. See [WHAT_I_DID_NOT_BUILD.md](WHAT_I_DID_NOT_BUILD.md) for what exists today.*
+
 This document is a target-architecture design review: what xctriage's
 agentic and auto-remediation layer could grow into, not a description of
 infrastructure that exists today. See the repo root `README.md` for what

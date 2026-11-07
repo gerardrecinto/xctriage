@@ -15,20 +15,20 @@ which for a rate limit looks like `API rate limit exceeded` or (for
 secondary rate limits) `You have exceeded a secondary rate limit`.
 
 In the CLI, this surfaces as `Remediate.run()` propagating the thrown
-error and the process exiting non-zero — there is no special-cased
+error and the process exiting non-zero: there is no special-cased
 handling for this specific failure today.
 
 ## What is the blast radius?
 
 Just this one invocation. The patch was already generated and passed
-sandbox validation (`--create-pr` requires sandbox to have run — see
+sandbox validation (`--create-pr` requires sandbox to have run: see
 `Remediate.run()`'s refusal of `--create-pr` with `--skip-sandbox`) before
 the PR step runs, so no work is lost: `sandboxResult` and `proposal` are
 still valid, only the `gh pr create` call failed.
 
 Because the idempotency check (`IdempotencyStore.existingResult`, ADR-006)
 runs *before* patch generation and only records success after a PR
-actually opens, a rate-limited failed run leaves no idempotency record —
+actually opens, a rate-limited failed run leaves no idempotency record:
 the next retry is treated as a first attempt, correctly.
 
 ## What should happen automatically?
@@ -41,7 +41,7 @@ or CI re-running the command, not an automated retry loop.
 
 Re-run `xctriage remediate ... --create-pr` once the rate limit window
 resets (GitHub reports the reset time in the `X-RateLimit-Reset` header;
-`gh`'s error text usually doesn't surface it directly — check `gh api
+`gh`'s error text usually doesn't surface it directly: check `gh api
 rate_limit` separately if needed). The re-run is safe: the state machine
 (ADR-005) has no `prOpened` transition recorded, so this isn't a duplicate
 attempt, it's a legitimate retry of one that never completed.

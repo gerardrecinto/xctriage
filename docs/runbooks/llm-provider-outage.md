@@ -12,7 +12,7 @@ propose a diff). If `api.anthropic.com` is down, rate-limited, or the
 ## How do I know?
 
 `Remediate.run()` checks for the API key up front and throws
-`TriageError.missingAPIKey` immediately if it's empty — that's a
+`TriageError.missingAPIKey` immediately if it's empty: that's a
 config error, not an outage. An actual outage or timeout surfaces as
 whatever error `URLSession` throws (e.g. a `URLError` for a timeout or
 connection failure) or, for a non-2xx HTTP response, however
@@ -25,7 +25,7 @@ CLI exits non-zero with a Swift error description.
 Only the parts of the pipeline that need the LLM. Deterministic
 parsing/classification/fingerprinting (`BuildLogParser`, `XCResultParser`,
 `RuleClassifier`, `FailureFingerprint`) do not call any network API and
-keep working even if `api.anthropic.com` is completely unreachable —
+keep working even if `api.anthropic.com` is completely unreachable:
 this is the guarantee `docs/architecture/PART_B` section 56 states as a
 design principle ("AI being unavailable must never prevent deterministic
 CI/test analysis"), and it holds here because those types simply don't
@@ -37,7 +37,7 @@ are unavailable until the API is reachable again. Plain `xctriage analyze`
 
 ## What should happen automatically?
 
-Nothing today — there is no retry/backoff wrapper around the
+Nothing today: there is no retry/backoff wrapper around the
 `URLSession` calls in `ClaudeClassifier` or `PatchGenerator`. A single
 failed request is a single failed CLI invocation.
 

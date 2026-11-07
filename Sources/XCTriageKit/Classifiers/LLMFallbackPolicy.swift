@@ -18,4 +18,17 @@ public enum LLMFallbackPolicy {
         if llmAlways { return true }
         return llmRequested && confidence < threshold
     }
+
+    // The exact text that leaves the machine for a classification call.
+    // Redaction is on by default; `--no-redact` is the only way to send the
+    // raw log. Kept here so the CLI and the tests share one code path.
+    public static func promptPayload(
+        entries: [LogEntry],
+        redact: Bool
+    ) -> (text: String, redaction: RedactionResult?) {
+        let raw = ClaudeClassifier.buildPromptText(entries)
+        guard redact else { return (raw, nil) }
+        let result = Redactor().redact(raw)
+        return (result.redactedText, result)
+    }
 }

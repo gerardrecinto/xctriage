@@ -15,7 +15,7 @@ codebase.
 ## Decision
 
 This codebase will not contain fake or stubbed clients for infrastructure
-that isn't real — no `KubernetesDeployer` that doesn't talk to a cluster,
+that isn't real: no `KubernetesDeployer` that doesn't talk to a cluster,
 no `ArgoCDReconciler` that doesn't reconcile anything, no `CanaryController`
 that has never seen production traffic. `docs/architecture/PART_B`
 stays clearly labeled as proposed target design (every section that
@@ -32,12 +32,12 @@ documents a decision about code that actually exists and actually runs.
   detection against a real API server, real webhook timing, real RBAC
   boundaries) and risks reading, to anyone skimming the repo, as more real
   than it is. That directly conflicts with this project's own accuracy
-  standard — see "Never fabricate metrics, deployment claims" in the
+  standard: see "Never fabricate metrics, deployment claims" in the
   project's engineering guidance.
 - **Actually provision the infrastructure** (a real EKS/GKE cluster, real
   Argo CD, real Terraform). Would make the design real, but is a
   significant ongoing cost and operational surface for a project whose
-  proven, tested core is a Swift CLI — and it isn't what was asked for in
+  proven, tested core is a Swift CLI: and it isn't what was asked for in
   any of the actual feature work done so far.
 
 ## Why chosen
@@ -45,8 +45,8 @@ documents a decision about code that actually exists and actually runs.
 The honest and useful thing this repository can do with a 114-point
 platform-engineering spec it didn't build the platform for is: implement,
 test, and ship the pieces that are real (state machine, idempotency,
-policy, sandbox, draft PRs — see ADR-002 through ADR-006), and describe
-the rest as exactly what it is — a design a Staff/Principal-level review
+policy, sandbox, draft PRs: see ADR-002 through ADR-006), and describe
+the rest as exactly what it is: a design a Staff/Principal-level review
 would produce for where this goes next, not a changelog of what's running.
 
 ## Consequences

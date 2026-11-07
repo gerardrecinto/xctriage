@@ -63,13 +63,16 @@ struct Analyze: AsyncParsableCommand {
     @Flag(name: .long, help: "Exit 1 when a failure is detected (CI gate mode)")
     var exitCode: Bool = false
 
-    @Flag(name: .long, help: "Strip secrets/PII from the log before it reaches Claude (only affects the --llm request, not local rule-based output)")
-    var redact: Bool = false
+    @Flag(
+        name: .long, inversion: .prefixedNo,
+        help: "Strip secrets/PII from the log before it reaches Claude. On by default; --no-redact sends the raw log. Only affects the Claude request, not local rule-based output"
+    )
+    var redact: Bool = true
 
     @Flag(name: .long, help: "Print the exact text that would be sent to Claude and exit, without calling the API")
     var dryRunPrompt: Bool = false
 
-    @Flag(name: .long, help: "With --redact, print what was stripped (category + count) to stderr")
+    @Flag(name: .long, help: "When redacting, print what was stripped (category + count) to stderr")
     var redactionReport: Bool = false
 
     mutating func run() async throws {
@@ -225,24 +228,15 @@ struct Analyze: AsyncParsableCommand {
         }
 
         let classifier = ClaudeClassifier(apiKey: apiKey)
-        guard redact else {
-            return try await classifier.classify(entries)
-        }
-
-        let redaction = Redactor().redact(ClaudeClassifier.buildPromptText(entries))
-        if redactionReport { printRedactionSummary(redaction) }
-        return try await classifier.classify(promptText: redaction.redactedText)
+        let payload = LLMFallbackPolicy.promptPayload(entries: entries, redact: redact)
+        if redactionReport, let redaction = payload.redaction { printRedactionSummary(redaction) }
+        return try await classifier.classify(promptText: payload.text)
     }
 
     private static func printDryRunPrompt(_ entries: [LogEntry], redact: Bool, showReport: Bool) {
-        let raw = ClaudeClassifier.buildPromptText(entries)
-        guard redact else {
-            print(raw)
-            return
-        }
-        let redaction = Redactor().redact(raw)
-        print(redaction.redactedText)
-        if showReport { printRedactionSummary(redaction) }
+        let payload = LLMFallbackPolicy.promptPayload(entries: entries, redact: redact)
+        print(payload.text)
+        if showReport, let redaction = payload.redaction { printRedactionSummary(redaction) }
     }
 
     private func emitReport(_ report: TriageReport) async throws {
