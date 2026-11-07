@@ -136,10 +136,7 @@ struct Analyze: AsyncParsableCommand {
             }
             return
         } else {
-            guard let text = try? String(contentsOfFile: input, encoding: .utf8) else {
-                throw TriageError.fileNotFound(input)
-            }
-            logText = text
+            logText = try LogFile.read(input)
         }
 
         let ciSource = CISource(rawValue: source == "github" ? "github_actions" : source) ?? .xcodebuild
@@ -457,10 +454,7 @@ struct Remediate: AsyncParsableCommand {
         if input == "-" {
             logText = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
         } else {
-            guard let text = try? String(contentsOfFile: input, encoding: .utf8) else {
-                throw TriageError.fileNotFound(input)
-            }
-            logText = text
+            logText = try LogFile.read(input)
         }
         let parser = BuildLogParser()
         let entries = parser.parse(logText)
@@ -622,10 +616,7 @@ struct Redact: AsyncParsableCommand {
         if input == "-" {
             text = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
         } else {
-            guard let contents = try? String(contentsOfFile: input, encoding: .utf8) else {
-                throw TriageError.fileNotFound(input)
-            }
-            text = contents
+            text = try LogFile.read(input)
         }
 
         let result = Redactor(redactEmails: !keepEmails).redact(text)
