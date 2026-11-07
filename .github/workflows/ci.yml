@@ -30,7 +30,7 @@ jobs:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
 
   trivy:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
@@ -52,7 +52,7 @@ jobs:
           severity: ${{ vars.TRIVY_SEVERITY || 'CRITICAL,HIGH' }}
 
       - name: Upload Trivy results to Code Scanning
-        uses: github/codeql-action/upload-sarif@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         if: always()
         with:
           sarif_file: ${{ env.TRIVY_RESULTS_SARIF }}
@@ -108,6 +108,9 @@ jobs:
             --llm --redact \
             --output slack || true
 
+      - name: Check CLI failure exit codes
+        run: scripts/check-exit-codes.sh "$XCTRIAGE_BIN"
+
       - name: Test
         id: test
         continue-on-error: true
@@ -161,7 +164,7 @@ jobs:
 
       - name: Upload remediation proposal
         if: steps.propose_patch.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: remediation-proposal-${{ matrix.xcode }}
           path: ${{ env.REMEDIATION_DIFF }}
@@ -210,7 +213,7 @@ jobs:
 
       - name: Upload triage reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: triage-reports-${{ matrix.xcode }}
           path: |

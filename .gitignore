@@ -10,3 +10,9 @@ xcuserdata/
 .aider*
 .vscode/
 .claude/settings.local.json
+
+node_modules/
+_site/
+playwright-report/
+test-results/
+__pycache__/

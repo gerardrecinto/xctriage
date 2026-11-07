@@ -131,7 +131,7 @@ struct Analyze: AsyncParsableCommand {
                 durationMS: duration
             )
             try await emitReport(report)
-            if exitCode && !result.failureSites.isEmpty {
+            if exitCode && result.hasDetectedFailure {
                 Foundation.exit(1)
             }
             return
@@ -184,7 +184,7 @@ struct Analyze: AsyncParsableCommand {
         )
         try await emitReport(report)
 
-        if exitCode && !result.failureSites.isEmpty {
+        if exitCode && (result.hasDetectedFailure || entries.contains { $0.level == .error }) {
             Foundation.exit(1)
         }
     }

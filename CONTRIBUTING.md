@@ -1,26 +1,16 @@
 # Contributing
 
-Issues and pull requests are welcome.
+Bug reports, doc fixes and small improvements are welcome. For anything bigger, open an issue first so we can agree on the approach before you spend time on it.
 
-## Set up
-
-You need macOS 14 or later with Swift 6.
+## Run the checks
 
 ```bash
-git clone https://github.com/gerardrecinto/xctriage.git
-cd xctriage
 swift build
 swift test
 ```
 
-The first build takes a few minutes.
-
 ## Pull requests
 
-- Branch from `main` and keep the change small and focused.
-- Add or update tests for behavior you change. `swift test` must pass.
-- Run `swiftlint lint --quiet` if you have SwiftLint installed.
-- Say what changed and how you tested it in the PR description.
-- Do not commit real logs that contain secrets. Use the fixtures in `Tests/XCTriageKitTests/Fixtures/`.
+Keep each PR to one change. Say what you ran to check it. CI has to pass before merge.
 
-Security problems: see [SECURITY.md](SECURITY.md) instead of opening an issue.
+Issues labelled "good first issue" are a good place to start.

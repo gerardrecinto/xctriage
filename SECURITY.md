@@ -1,19 +1,24 @@
-# Security Policy
+# Security policy
 
-## Reporting a vulnerability
+## Report privately
 
-Email gerardrecinto@gmail.com with the details. Please do not open a public issue for a security problem.
+Email [gerardrecinto@gmail.com](mailto:gerardrecinto@gmail.com?subject=xctriage%20security%20report) with:
 
-Include what you found, how to reproduce it, and the version or commit. I will reply within a few days and tell you what I plan to do.
+- The affected version or commit and source paths.
+- A minimal, redacted reproduction and the impact you observed.
+- Any relevant configuration, with credentials and private data removed.
+
+Keep credentials, private build logs, and vulnerability details out of public issues. A sanitized fixture is enough to start a report.
 
 ## Scope
 
-xctriage is a command line tool. Issues I care about most:
+Reports can cover:
 
-- Secrets or personal data reaching the Claude API when redaction is on.
-- A patch proposed by `xctriage remediate` getting past the policy or sandbox checks.
-- Anything in the GitHub workflows that exposes a secret or a write token.
+- Build-log parsing and local failure data.
+- Unexpected log or credential exposure through the Claude API or Slack output.
+- Remediation policy or sandbox bypasses.
+- Repository workflows and release artifacts that expose credentials or write access.
 
 ## Supported versions
 
-Only the latest release and `main` get fixes.
+Security fixes target `main` and the latest release. Older versions may require an upgrade. Include the output of `xctriage --version` or the affected commit in your report.

@@ -18,7 +18,7 @@
 # (ClaudeClassifier/PatchGenerator/SlackReporter).
 
 # ---- Builder ----
-FROM swift:6.0-noble AS builder
+FROM swift:6.4-noble AS builder
 
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
         libsqlite3-dev \
