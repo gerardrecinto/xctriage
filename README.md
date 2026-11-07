@@ -422,7 +422,7 @@ Rather than a feature checklist, here is how each concept appears in the actual 
 <summary>Run the tests</summary>
 
 ```bash
-swift test                          # 228 tests
+swift test                          # 232 tests
 swift test --enable-code-coverage   # with coverage
 swift build -c release              # build binary
 bash scripts/make_demo.sh           # run demo fixtures
