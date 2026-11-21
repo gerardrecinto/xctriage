@@ -19,8 +19,34 @@ struct XCTriage: AsyncParsableCommand {
         commandName: "xctriage",
         abstract: "AI-powered CI failure analysis for Apple platforms",
         version: "1.7.0",
-        subcommands: [Analyze.self, Flaky.self, Remediate.self, Redact.self]
+        subcommands: [Analyze.self, Batch.self, Flaky.self, Remediate.self, Redact.self]
     )
+}
+
+// MARK: batch
+
+struct Batch: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Classify every .log and .txt file in a folder and show how many the rules cover. Never calls Claude"
+    )
+
+    @Argument(help: "Folder that holds failed-build logs")
+    var directory: String
+
+    @Option(name: .long, help: "Confidence a rule match needs to count as classified (default: 0.60)")
+    var threshold: Double = 0.60
+
+    @Flag(name: .long, help: "Print the summary as JSON")
+    var json: Bool = false
+
+    func run() throws {
+        let paths = try BatchTriage.listLogs(in: directory)
+        guard !paths.isEmpty else {
+            throw ValidationError("No .log or .txt files in \(directory). Point batch at the folder that holds your failed-build logs.")
+        }
+        let summary = BatchTriage.run(paths: paths, threshold: threshold)
+        print(json ? try BatchTriage.json(summary) : BatchTriage.render(summary, threshold: threshold))
+    }
 }
 
 // MARK: analyze
