@@ -216,4 +216,32 @@ final class ClassifierTests: XCTestCase {
         let boot = classify(["error: bootstrap script finished with status 2", "** BUILD FAILED **"])
         XCTAssertNotEqual(boot.summary, "iOS Simulator boot or simctl failure")
     }
+
+    // MARK: generic compiler diagnostics
+
+    func test_classify_swiftPMDiagnosticWithoutKnownPhrase() {
+        let log = """
+        /work/Tests/BrkTests/T.swift:3:61: error: use of 'add' refers to instance method rather than global function 'add' in module 'Brk'
+        error: fatalError
+        """
+        let result = classifier.classify(parser.extractFailureContext(parser.parse(log)))
+        XCTAssertEqual(result.category, .compilationError)
+        XCTAssertGreaterThanOrEqual(result.confidence, 0.60)
+    }
+
+    func test_specificCompileRuleStillWinsOverTheCatchAll() {
+        let log = "/work/A.swift:9:5: error: cannot find 'foo' in scope"
+        let result = classifier.classify(parser.extractFailureContext(parser.parse(log)))
+        XCTAssertEqual(result.confidence, 0.92, accuracy: 0.001)
+    }
+
+    func test_realSwiftTestFailureIsStillATestFailure() {
+        let log = """
+        /work/Tests/BrkTests/T.swift:3: error: -[BrkTests.T testAdd] : XCTAssertEqual failed: ("3") is not equal to ("4")
+        Test Case '-[BrkTests.T testAdd]' failed (0.248 seconds).
+        """
+        let result = classifier.classify(parser.extractFailureContext(parser.parse(log)))
+        XCTAssertEqual(result.category, .testFailure)
+        XCTAssertEqual(result.confidence, 0.95, accuracy: 0.001)
+    }
 }

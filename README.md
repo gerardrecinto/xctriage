@@ -54,7 +54,7 @@ This is trimmed from a real run of the command above. The tool also prints the s
 
 It does:
 - Read `xcodebuild` console output, GitHub Actions logs, and `.xcresult` bundles (the last needs macOS with Xcode).
-- Match the log against 25 weighted regex rules and pick the highest weight. There are 8 failure categories, such as compilation error, test failure and runtime crash.
+- Match the log against 26 weighted regex rules and pick the highest weight. There are 8 failure categories, such as compilation error, test failure and runtime crash.
 - Optionally ask Claude when no rule is confident. Use `--llm` and your own `XCTRIAGE_ANTHROPIC_API_KEY`. Without `--llm`, nothing is sent to Claude. With `--llm`, the log is redacted first by default; see [Privacy](#privacy-what-leaves-your-machine-with---llm). Slack output explicitly sends a report to your configured webhook.
 - Keep a local SQLite record of failures over 90 days. Scores show failure occurrences per recorded failing build, not a measured failure rate across passing and failing runs.
 - Print to the terminal, or output JSON, SARIF, GitHub annotations or a Slack message.
@@ -227,7 +227,7 @@ xcodebuild / xcresult bundle / CI log
 │                     ▼                                   │
 │  ┌──────────────────────────────────────────────┐       │
 │  │            RuleClassifier (struct)            │       │
-│  │  25 NSRegularExpression rules                 │       │
+│  │  26 NSRegularExpression rules                 │       │
 │  │  8 categories + unknown · no network   │       │
 │  └───────────────────┬──────────────────────────┘       │
 │                      │ confidence < 0.60 AND --llm       │
