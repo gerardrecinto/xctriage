@@ -195,7 +195,7 @@ Each category is a kind of failure, and each rule is a pattern that recognizes o
 
 ## Failure Categories
 
-| Category | Patterns (21 total) | Apple CI example |
+| Category | Patterns (25 total) | Apple CI example |
 |---|---|---|
 | `compilation_error` | unresolved identifier, type mismatch, linker, code sign | `use of unresolved identifier 'AVAssetTrackSegment'` |
 | `test_failure` | XCTest case failed, XCTAssert failure, `** TEST FAILED **` | `Test Case '-[MediaTests testBitIdentical]' failed (2.3s)` |
