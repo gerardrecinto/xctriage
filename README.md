@@ -152,6 +152,16 @@ xctriage analyze build.log --source xcodebuild --exit-code
 - run: xctriage analyze build.log --source xcodebuild --exit-code
 ```
 
+### Check the rules against your own logs with `batch`
+
+Before you rely on the rules, see how many of your past failures they recognize. Put failed-build logs (`.log` or `.txt`) in a folder and run:
+
+```bash
+xctriage batch ./failed-logs            # add --json for scripts, --threshold 0.8 to be stricter
+```
+
+It prints how many logs the rules classified at the confidence threshold, a count per category, and the logs no rule matched. It never calls Claude, never writes the flaky database and never changes your files. A passing build lands in the not-classified list by design; a real failure there means a rule is missing, so open it and add one. It reads one folder, not subfolders. On six logs (four from a deliberately broken Swift package and the two bundled samples) it classified 4: two compile errors and two test failures. It left a passing build, which is correct, and a SwiftPM `error: use of 'add' refers to instance method...` compile error, which is a real gap in the rules. The percentage measures rule coverage on your logs, not whether the suggested fix is right.
+
 </details>
 
 <details>
