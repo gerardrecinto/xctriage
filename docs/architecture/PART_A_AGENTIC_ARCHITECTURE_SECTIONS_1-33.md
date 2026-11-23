@@ -6,7 +6,7 @@ This document is a target-architecture design review: what xctriage's
 agentic and auto-remediation layer could grow into, not a description of
 infrastructure that exists today. See the repo root `README.md` for what
 is actually built and tested right now (`BuildLogParser`/`XCResultParser`,
-a 19-rule `RuleClassifier` across 8 categories, a `ClaudeClassifier`
+a 25-rule `RuleClassifier` across 8 categories, a `ClaudeClassifier`
 fallback, a `FlakyTestTracker`, `FailureFingerprint`, a two-gate
 `RemediationPolicy`, `PatchGenerator`, `SandboxValidator`, and the
 `remediate` CLI subcommand wiring all of it together, with 76 passing

@@ -70,7 +70,7 @@ truncates file contents to 6,000 characters. Neither sends the full log or
 the full file by default.
 
 **Local / Source-Adjacent Processing.** **(MEASURED)** Classification is
-attempted locally first (`RuleClassifier`, 17 regex rules, zero network)
+attempted locally first (`RuleClassifier`, 25 regex rules, zero network)
 before any data leaves the machine. The network call only happens when the
 local pass is not confident enough.
 
@@ -99,7 +99,7 @@ Raw xcodebuild log / .xcresult bundle
 └───────────┬───────────┘
             ▼
 ┌───────────────────────┐
-│  RuleClassifier        │  (MEASURED) 17 rules, local,
+│  RuleClassifier        │  (MEASURED) 25 rules, local,
 │                        │  zero network, sub-millisecond
 └───────────┬───────────┘
             │ confidence < 0.60 AND --llm
@@ -1230,7 +1230,7 @@ architecture, which does not exist in this repo today.
 
 **(MEASURED, and fast)** The CLI has no meaningful cold-start cost -
 `swift build -c release` produces a native binary, and `RuleClassifier`'s
-17 regex patterns are compiled once as static module-level constants, not
+25 regex patterns are compiled once as static module-level constants, not
 per-invocation, so even a from-cold `xctriage analyze` run is the
 sub-millisecond-classification number quoted elsewhere in this project's
 Q&A, not seconds of interpreter or JIT warmup.
@@ -1404,7 +1404,7 @@ behind a shared protocol first," not "it already supports that."
 not a peripheral concern: fingerprinting, classification-by-default, and
 secret-adjacent normalization (in the fingerprinting sense, not a real
 secret scanner) all happen locally, deterministically, with zero network
-calls, before the one narrow LLM fallback is even considered. The 17-rule
+calls, before the one narrow LLM fallback is even considered. The 25-rule
 `RuleClassifier` handling the majority of failure classification without
 any model call at all is the concrete instance of "simple or local
 tasks should generally not require an external reasoning service."

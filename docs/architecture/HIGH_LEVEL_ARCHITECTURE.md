@@ -38,7 +38,7 @@ Every box below is a real step in `.github/workflows/ci.yml` or a real method ca
                         |               |
                         v               v
               ( CI job green )   [ RuleClassifier.classify ]
-                                    (19 rules, 8 categories,
+                                    (25 rules, 8 categories,
                                      deterministic, no LLM —
                                      ClaudeClassifier only
                                      fires below 0.60 confidence)

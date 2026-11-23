@@ -414,7 +414,7 @@ if release artifacts moved to a self-hosted registry with retention costs.
 **(MEASURED)** This one already exists in real, tested code: the 7
 `FailureCategory` cases (`compilation_error`, `test_failure`, `flaky_test`,
 `resource_exhaustion`, `infra_failure`, `dependency_failure`, `timeout`) ARE
-the build failure taxonomy, backed by 17 real regex rules
+the build failure taxonomy, backed by 25 real regex rules
 (`RuleClassifier.defaultRules`), each mapped to a category with a
 `weight`/confidence.
 
@@ -1029,7 +1029,7 @@ teams, with real security and privacy stakes. The discipline held
 throughout, not just in this closing section, is: state the mechanism, not
 the aspiration; test the claim, not just assert it; name the gap instead of
 implying it's solved. What's actually real and tested today is small and
-deliberately so: a deterministic 17-rule classifier, an LLM fallback that
+deliberately so: a deterministic 25-rule classifier, an LLM fallback that
 only activates below a confidence threshold and only ever sees a truncated
 window, a fingerprint that survives process restarts because it doesn't
 depend on Swift's seeded hasher, two policy gates that a model cannot argue
