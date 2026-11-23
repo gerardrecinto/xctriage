@@ -51,6 +51,15 @@ internal let defaultRules: [ClassifierRule] = [
         summaryTemplate: "Swift type mismatch or missing member",
         fixTemplate: "Verify the API exists for the target SDK version. Check for a deprecated API that changed signature."
     ),
+    // Catch-all for compiler diagnostics with a file, line and column, such as SwiftPM's
+    // "error: use of 'add' refers to instance method". Weighted below the specific rules
+    // so they still win. XCTest failure lines have no column, so they do not match.
+    ClassifierRule(
+        pattern: #"(?i)\.(swift|m|mm|c|cc|cpp|h|hpp):[0-9]+:[0-9]+: error:"#,
+        category: .compilationError, weight: 0.70,
+        summaryTemplate: "Compiler error",
+        fixTemplate: "Open the first error in the log: the file, line and column are on that line. Later errors are often caused by the first."
+    ),
     ClassifierRule(
         pattern: #"(?i)(linker command failed|ld: .*not found|framework not found|library not found|symbol.* not found)"#,
         category: .compilationError, weight: 0.90,
